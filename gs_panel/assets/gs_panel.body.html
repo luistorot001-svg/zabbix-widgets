@@ -1,0 +1,92 @@
+<!-- Panel de teléfonos Grandstream · estructura (la lógica está en gs_panel.js) -->
+<div class="pagina">
+  <div class="encabezado">
+    <div class="franja" aria-hidden="true"><i></i><b></b></div>
+    <div class="cabecera">
+      <div>
+        <p class="sub" id="resumen">Sin lecturas todavía</p>
+      </div>
+      <div class="puente" aria-live="polite">
+        <div class="puente-fila">
+          <span class="pildora" id="puente-estado" data-tono="neutro">Leyendo</span>
+          <label class="frecuencia" id="caja-grupo" hidden><span>Grupo</span><select id="f-grupo"></select></label>
+          <label class="frecuencia"><span>Actualizar cada</span><select id="f-refresco">
+            <option value="30">30 s</option><option value="60">1 min</option><option value="180">3 min</option><option value="300">5 min</option><option value="600">10 min</option>
+          </select></label>
+        </div>
+        <p class="nota" id="puente-nota">Datos de Zabbix.</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="aviso-pagina" id="aviso" role="status" hidden></p>
+
+  <div class="zona" id="zona">
+    <div class="barra">
+      <span class="cuenta" id="cuenta">—</span>
+      <button type="button" class="boton-sec" id="limpiar" hidden>Limpiar filtros</button>
+    </div>
+    <div class="tabla">
+      <div class="cols" role="group" aria-label="Filtros de la lista">
+        <label class="filtro filtro-ext"><span>Teléfono</span><input type="search" id="f-buscar" placeholder="Extensión o nombre" autocomplete="off"></label>
+        <label class="filtro"><span>Modelo</span><select id="f-modelo"></select></label>
+        <label class="filtro"><span>IP</span><input type="search" id="f-ip" placeholder="Ej. 192.168.1." autocomplete="off" inputmode="decimal"></label>
+        <label class="filtro"><span>Disponible</span><select id="f-disp"></select></label>
+        <label class="filtro"><span>DND</span><select id="f-dnd"></select></label>
+        <label class="filtro"><span>Registrado</span><select id="f-reg"></select></label>
+        <div class="filtro"><select id="f-varcol" class="sel-col" aria-label="Dato que muestra esta columna"></select><select id="f-var" aria-label="Filtro de la columna"></select></div>
+        <span></span>
+      </div>
+      <ul class="lista" id="lista"></ul>
+      <p class="vacio-lista" id="vacio" hidden>Ningún teléfono cumple estos filtros.</p>
+    </div>
+  </div>
+</div>
+
+<template id="tpl-fila">
+  <li class="fila">
+    <button type="button" class="fila-cab" aria-expanded="false">
+      <span class="ext">
+        <span class="ext-linea"><span class="ext-num" data-r="ext">—</span><span class="ext-nombre" data-r="nombre"></span><span class="mas" data-r="mas" hidden></span></span>
+        <span class="marca" data-r="marca" hidden></span>
+      </span>
+      <span class="celda"><span class="celda-rot">Modelo</span><span class="dato" data-r="c-modelo">—</span></span>
+      <span class="celda"><span class="celda-rot">IP</span><span class="dato" data-r="c-ip">—</span></span>
+      <span class="celda"><span class="celda-rot">Disponible</span><span class="pildora" data-r="c-disp" data-pausa>—</span></span>
+      <span class="celda"><span class="celda-rot">DND</span><span class="pildora" data-r="c-dnd" data-vivo>—</span></span>
+      <span class="celda"><span class="celda-rot">Registrado</span><span class="pildora" data-r="c-reg" data-vivo>—</span></span>
+      <span class="celda"><span class="celda-rot" data-r="rot-var">Problemas</span><span class="pildora" data-r="c-var" data-pausa>—</span></span>
+      <span class="chevron" aria-hidden="true"></span>
+    </button>
+    <div class="detalle" hidden>
+      <div class="ancho">
+        <h3>Cuentas SIP de este teléfono</h3>
+        <ul class="renglones" data-r="cuentas"></ul>
+      </div>
+      <div class="ancho">
+        <h3>Problemas activos</h3>
+        <ul class="renglones" data-r="problemas"></ul>
+      </div>
+      <div>
+        <h3>Red</h3>
+        <dl class="pares datos">
+          <dt>Ping</dt><dd data-r="d-ping">—</dd>
+          <dt>Latencia</dt><dd data-r="d-rtt">—</dd>
+          <dt>Pérdida</dt><dd data-r="d-loss">—</dd>
+          <dt>Encendido</dt><dd data-r="d-uptime">—</dd>
+          <dt>Lectura</dt><dd data-r="d-lectura">—</dd>
+        </dl>
+      </div>
+      <div>
+        <h3>Equipo</h3>
+        <dl class="pares datos">
+          <dt>Modelo</dt><dd data-r="d-modelo">—</dd>
+          <dt>Firmware</dt><dd data-r="d-firmware">—</dd>
+          <dt>MAC</dt><dd data-r="d-mac">—</dd>
+          <dt>IP</dt><dd data-r="d-ip">—</dd>
+          <dt>N.º de parte</dt><dd data-r="d-parte">—</dd>
+        </dl>
+      </div>
+    </div>
+  </li>
+</template>

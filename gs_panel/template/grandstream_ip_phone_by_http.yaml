@@ -1,0 +1,1403 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: e067e3ab9c5c4bff8f2465e3bb302732
+      name: Templates/Telephony
+  templates:
+    - uuid: bd55267fad3c4ef6af04e84030098432
+      template: 'Grandstream IP Phone by HTTP'
+      name: 'Grandstream IP Phone by HTTP'
+      description: |
+        Grandstream (GXP16xx/17xx/21xx, GRP26xx, GXV34xx) consultado directo al teléfono, sin depender del conmutador. v1.7.2.
+        - SNMP v2c (validado en GXP2135, GXP2130 y GRP2613): uptime/reinicios, registro por cuenta, DND, firmware, número de parte, modelo y MAC.
+          Requiere interfaz SNMP (v2c) en el host; la comunidad es {$SNMP_COMMUNITY} del template (public), cámbiala en el template o por host.
+        - Consulta web cada {$GS.INTERVAL}: detecta sola si es GXP o GRP (por la página inicial, sin login) y usa el puerto,
+          protocolo, contraseña y API de esa familia ({$GS.PORT:"GXP"}/{$GS.PORT:"GRP"}, {$GS.PASSCODE:"GXP"}/{$GS.PASSCODE:"GRP"}).
+          Descubre las cuentas y lee servidor SIP, Feature Key Sync, QoS (DSCP de SIP y RTP) y códecs preferidos por cuenta.
+          v1.7.2: familia GXV (GXV34xx, login /api con token; validado en GXV3450): además lee volumen de llamada y timbre.
+          QoS RTP: P1559 en GRP y GXV (validado); en GXP se lee P1559 y, si está vacío, P38 (GXP NO validado aún).
+          El teléfono tiene UNA sola sesión web: cada consulta saca a quien esté en su página; por eso es poco frecuente.
+        - Ping: disponibilidad, pérdida y latencia (requiere fping en server/proxy).
+        - Llamadas: no se monitorean (SNMP no las expone y la consulta web frecuente saca de la sesión). En prueba: Action URL.
+        Requisitos en el teléfono: SNMP habilitado; Remote Control (en GRP: Network Settings > Advanced Settings): Action URI Support activado,
+        Popup Window Support desactivado, Allowed IP List con la IP del server/proxy.
+        Contraseñas (secretas, vacías): {$GS.PASSCODE:"GXP"}, {$GS.PASSCODE:"GRP"} y {$GS.PASSCODE:"GXV"}; si la de la familia está vacía se usa {$GS.PASSCODE}.
+        Para un host con otra contraseña, define en el host la macro con contexto ({$GS.PASSCODE:"GRP"}), no la genérica.
+      groups:
+        - name: Templates/Telephony
+      items:
+        - uuid: 9833b7eb588a4f769c860da2065a356a
+          name: 'Cuentas SIP configuradas'
+          type: DEPENDENT
+          key: gs.accounts.configured
+          delay: '0'
+          history: 90d
+          description: 'Foto de la consulta web ({$GS.INTERVAL}).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value), b = (d.accounts && d.accounts.body instanceof Array) ? d.accounts.body : null;
+                  if (!b) throw 'sin datos de cuentas';
+                  var n = 0;
+                  for (var i = 0; i < b.length; i++) { if (b[i].sip_id) n++; }
+                  return n;
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: registro
+        - uuid: 71ba5f23baea4e8aaff42f53bb739f66
+          name: 'Extensiones del teléfono'
+          type: DEPENDENT
+          key: gs.accounts.extensions
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          inventory_link: ALIAS
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value), b = (d.accounts && d.accounts.body instanceof Array) ? d.accounts.body : null;
+                  if (!b) throw 'sin datos de cuentas';
+                  var out = [];
+                  for (var i = 0; i < b.length; i++) { if (b[i].sip_id) out.push(b[i].sip_id + (b[i].name ? ' (' + b[i].name + ')' : '')); }
+                  return out.length ? out.join(', ') : 'sin cuentas';
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: inventario
+        - uuid: 89c103e9ad70496eb152c4c7faf47674
+          name: 'Cuentas registradas'
+          type: CALCULATED
+          key: gs.accounts.registered
+          delay: '{$GS.SNMP.INTERVAL}'
+          history: 90d
+          value_type: FLOAT
+          params: 'sum(last_foreach(//gs.account.reg[*]))'
+          description: 'Suma de las cuentas registradas (items SNMP "Cuenta N: registro"). Nombre fijo para usarlo como columna en dashboards (Top hosts). Comparar con "Cuentas SIP configuradas". En GXV el registro por SNMP no está validado.'
+          tags:
+            - tag: component
+              value: registro
+        - uuid: e4e9f2528f634242bd10a922e745b83f
+          name: 'API: respuesta'
+          type: DEPENDENT
+          key: gs.cti.response
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'success = el teléfono respondió con datos. unauthorized = sin sesión válida (contraseña, usuario o Remote Control). error: = HTTP/red.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value), s = d.phone_status || {};
+                  if (s.response === 'success' && s.body !== 'unauthorized') return 'success';
+                  if (s.body === 'unauthorized' || s.response === 'success') return 'unauthorized';
+                  return 'error: ' + String(s.body || 'sin respuesta').substring(0, 100);
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: cti
+          triggers:
+            - uuid: 0a5cb6ead00d4d439e701a5a9fa098b7
+              expression: 'last(/Grandstream IP Phone by HTTP/gs.cti.response)<>"success"'
+              name: 'Grandstream {HOST.NAME}: la API del teléfono no entrega datos ({ITEM.LASTVALUE})'
+              priority: WARNING
+              description: 'Revisar las macros de contraseña GS.PASSCODE (por familia) y el usuario GS.WEBAPI.USER, Remote Control > Action URI Support, Popup desactivado y Allowed IP List. Detalle en el item "API: errores" y "API: familia detectada".'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: notice
+            - uuid: ab912552c2994fd8bc0ea39d8e8f35c4
+              expression: 'nodata(/Grandstream IP Phone by HTTP/gs.cti.response,{$GS.NODATA})=1'
+              name: 'Grandstream {HOST.NAME}: sin datos de la API ({$GS.NODATA})'
+              priority: AVERAGE
+              description: 'El item Script no devuelve datos: timeout, servicio web caído o esquema/puerto incorrecto.'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: bb4c75c2726a42bd9b51f094cde5a6e9
+          name: 'API: familia detectada'
+          type: DEPENDENT
+          key: gs.family
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'GXP, GRP o GXV: método, puerto, protocolo y contraseña que usó la consulta web. Se fuerza con {$GS.FAMILY}.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.family
+              error_handler: CUSTOM_VALUE
+              error_handler_params: n/d
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: cti
+        - uuid: 2f31b6e074164c8baa1aecefeda4447e
+          name: Firmware
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.42397.1.3.3.4.0.0
+          key: gs.inv.firmware
+          delay: 1h
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'Versión de Programa (42397.1.3.3.4). Validado contra la API web (clave 68).'
+          inventory_link: SOFTWARE
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+          triggers:
+            - uuid: 2052cff498dc42ccb78f51f274600ef4
+              expression: 'last(/Grandstream IP Phone by HTTP/gs.inv.firmware)<>last(/Grandstream IP Phone by HTTP/gs.inv.firmware,#1:now-2d)'
+              name: 'Grandstream {HOST.NAME}: cambió el firmware respecto a hace 2 días (ahora {ITEM.LASTVALUE})'
+              priority: INFO
+              description: 'El valor actual es distinto al de hace 2 días. Ver History del item para el valor anterior. Se resuelve solo cuando pasan 2 días con el valor nuevo, o se puede cerrar a mano.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: cambio
+        - uuid: e52fb9bb859c4a06be6982c3a455a125
+          name: 'Firmware: versión de boot'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.42397.1.3.3.1.0.0
+          key: gs.inv.firmware.boot
+          delay: 1h
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'Versión de Boot (42397.1.3.3.1). Core y Base están en 42397.1.3.3.2 y .3.3.3.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+        - uuid: 97830c0109ee47d99b3cac0d99cdccda
+          name: MAC
+          type: DEPENDENT
+          key: gs.inv.mac
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'Sale de sysName (SNMP).'
+          inventory_link: MACADDRESS_A
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '_([0-9A-Fa-f]{12})$'
+                - \1
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value.toUpperCase().match(/../g).join(":");'
+          master_item:
+            key: gs.snmp.sysname
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+        - uuid: 236b5b4be85d476497fc2a4e95e0a77e
+          name: Modelo
+          type: DEPENDENT
+          key: gs.inv.model
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'Sale de sysName (SNMP).'
+          inventory_link: MODEL
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^([A-Za-z0-9]+)_'
+                - \1
+            - type: JAVASCRIPT
+              parameters:
+                - 'return value.toUpperCase();'
+          master_item:
+            key: gs.snmp.sysname
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+        - uuid: 3b4c73b5f3ca4a978871002861aa0400
+          name: 'Número de parte'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.42397.1.3.1.0.0
+          key: gs.inv.partnumber
+          delay: 1h
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'Rama Grandstream 42397.1.3.1 (validado: 9620007114A en GXP2135). Sin inventario por ahora: el campo Hardware lo usaba Versión de hardware de la v1.5.1.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+        - uuid: edf79b585b424642b9c52b939311064a
+          name: 'API: método de login'
+          type: DEPENDENT
+          key: gs.login
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'token = firmware nuevo (SHA256), plain = firmware anterior, none = sin sesión (inventario/config no disponibles).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.login
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: cti
+        - uuid: e9d6cedbd36f4190be97bb2a8ea00a0d
+          name: 'DND (No molestar)'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.4.1.42397.1.3.2.2.0.0
+          key: gs.phone.dnd
+          delay: '{$GS.SNMP.INTERVAL}'
+          history: 90d
+          description: 'Rama Grandstream 42397.1.3.2.2. Validado: 1 al activar DND, 0 al desactivar. Es global del teléfono.'
+          valuemap:
+            name: 'GS DND'
+          tags:
+            - tag: component
+              value: llamada
+            - tag: source
+              value: snmp
+          triggers:
+            - uuid: 56c8d78e167d4e48893ec5d9a77ee599
+              expression: 'min(/Grandstream IP Phone by HTTP/gs.phone.dnd,{$GS.DND.MAX})=1'
+              name: 'Grandstream {HOST.NAME}: DND activo por más de {$GS.DND.MAX}'
+              priority: INFO
+              description: 'La extensión no recibe llamadas. Confirmar con el usuario si es intencional.'
+              manual_close: 'YES'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: notice
+        - uuid: b7bf1639f39445dea29e92682d7359e8
+          name: 'Consulta al teléfono (crudo)'
+          type: SCRIPT
+          key: gs.poll
+          delay: '{$GS.INTERVAL}'
+          history: '0'
+          value_type: TEXT
+          trends: '0'
+          params: |
+            // GS-Monitor · item Script de Zabbix 6.0 (ES5 / Duktape).
+            // Detecta la familia del teléfono (GXP o GRP) sin login, inicia sesión con la contraseña de esa familia,
+            // lee CTI + configuración y cierra sesión.
+            // GXP (fw 1.0.11.x): access -> token; dologin con SHA256(password + token) -> sid; CTI exige la sesión (cookies).
+            //   Firmware anterior: dologin en claro, o CTI solo con ?passcode=.
+            // GRP (fw 1.0.13.x): mismo login por HTTPS; además exige las cookies que pone su web (sid, device, version,
+            //   locale, oem); estado por POST con sid; configuración y registro por config_get (pvalues sin la P).
+            // OJO: Zabbix sustituye macros también dentro de este código; no escribir nombres de macro con llave y signo de pesos aquí.
+            var p = JSON.parse(value);
+            var out = { login: 'none', family: 'n/d', errors: [] };
+            var cookies = {};
+            var base = '';
+            
+            function gsSha256(ascii) {
+              function rr(v, a) { return (v >>> a) | (v << (32 - a)); }
+              var mw = Math.pow(2, 32), res = '', w = [], h = [], k = [], pc = 0, ic = {}, i, j, c;
+              for (c = 2; pc < 64; c++) {
+                if (!ic[c]) {
+                  for (i = 0; i < 313; i += c) ic[i] = c;
+                  h[pc] = (Math.pow(c, 0.5) * mw) | 0;
+                  k[pc++] = (Math.pow(c, 1 / 3) * mw) | 0;
+                }
+              }
+              h = h.slice(0, 8);
+              ascii = unescape(encodeURIComponent(ascii));
+              var L = ascii.length * 8;
+              ascii += '\x80';
+              while (ascii.length % 64 - 56) ascii += '\x00';
+              for (i = 0; i < ascii.length; i++) { j = ascii.charCodeAt(i); w[i >> 2] |= j << ((3 - i) % 4) * 8; }
+              w[w.length] = (L / mw) | 0;
+              w[w.length] = L;
+              for (j = 0; j < w.length;) {
+                var W = w.slice(j, j += 16), oh = h;
+                h = h.slice(0, 8);
+                for (i = 0; i < 64; i++) {
+                  var w15 = W[i - 15], w2 = W[i - 2], a = h[0], e = h[4];
+                  var t1 = h[7] + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & h[5]) ^ ((~e) & h[6])) + k[i] +
+                    (W[i] = (i < 16) ? W[i] : (W[i - 16] + (rr(w15, 7) ^ rr(w15, 18) ^ (w15 >>> 3)) + W[i - 7] +
+                      (rr(w2, 17) ^ rr(w2, 19) ^ (w2 >>> 10))) | 0);
+                  var t2 = (rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & h[1]) ^ (a & h[2]) ^ (h[1] & h[2]));
+                  h = [(t1 + t2) | 0].concat(h);
+                  h[4] = (h[4] + t1) | 0;
+                }
+                for (i = 0; i < 8; i++) h[i] = (h[i] + oh[i]) | 0;
+              }
+              for (i = 0; i < 8; i++) {
+                for (j = 3; j + 1; j--) { var b = (h[i] >> (j * 8)) & 255; res += ((b < 16) ? 0 : '') + b.toString(16); }
+              }
+              return res;
+            }
+            
+            // SHA-256 / HMAC / PBKDF2 sobre arreglos de bytes (ES5, Duktape). Para el login del GXV34xx.
+            var GSK = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+            function gsSha256Bytes(m) {
+              var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+              var l = m.length, n = ((l + 9 + 63) >> 6) << 6, b = new Array(n), i, j, W = new Array(64);
+              for (i = 0; i < n; i++) b[i] = i < l ? m[i] : 0;
+              b[l] = 0x80;
+              var bits = l * 8;
+              b[n - 1] = bits & 255; b[n - 2] = (bits >>> 8) & 255; b[n - 3] = (bits >>> 16) & 255; b[n - 4] = (bits >>> 24) & 255;
+              for (j = 0; j < n; j += 64) {
+                for (i = 0; i < 16; i++) W[i] = (b[j + 4 * i] << 24) | (b[j + 4 * i + 1] << 16) | (b[j + 4 * i + 2] << 8) | b[j + 4 * i + 3];
+                for (i = 16; i < 64; i++) {
+                  var x = W[i - 15], y = W[i - 2];
+                  var s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+                  var s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+                  W[i] = (W[i - 16] + s0 + W[i - 7] + s1) | 0;
+                }
+                var a = H[0], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7], bb = H[1];
+                for (i = 0; i < 64; i++) {
+                  var S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+                  var t1 = (h + S1 + ((e & f) ^ (~e & g)) + GSK[i] + W[i]) | 0;
+                  var S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+                  var t2 = (S0 + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;
+                  h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+                }
+                H[0] = (H[0] + a) | 0; H[1] = (H[1] + bb) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+                H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+              }
+              var out = [];
+              for (i = 0; i < 8; i++) out.push((H[i] >>> 24) & 255, (H[i] >>> 16) & 255, (H[i] >>> 8) & 255, H[i] & 255);
+              return out;
+            }
+            function gsUtf8(s) {
+              s = unescape(encodeURIComponent(s));
+              var a = [], i;
+              for (i = 0; i < s.length; i++) a.push(s.charCodeAt(i));
+              return a;
+            }
+            function gsHex(a) {
+              var s = '', i;
+              for (i = 0; i < a.length; i++) s += (a[i] < 16 ? '0' : '') + a[i].toString(16);
+              return s;
+            }
+            function gsUnhex(h) {
+              var a = [], i;
+              for (i = 0; i + 1 < h.length; i += 2) a.push(parseInt(h.substr(i, 2), 16));
+              return a;
+            }
+            function gsHmacPads(key) {
+              if (key.length > 64) key = gsSha256Bytes(key);
+              var ip = [], op = [], i;
+              for (i = 0; i < 64; i++) { var k = i < key.length ? key[i] : 0; ip.push(k ^ 0x36); op.push(k ^ 0x5c); }
+              return { ip: ip, op: op };
+            }
+            function gsHmac(pads, msg) {
+              return gsSha256Bytes(pads.op.concat(gsSha256Bytes(pads.ip.concat(msg))));
+            }
+            // PBKDF2-HMAC-SHA256, una sola salida de 32 bytes (dkLen = 32).
+            function gsPbkdf2(pw, salt, iter) {
+              var pads = gsHmacPads(pw), u = gsHmac(pads, salt.concat([0, 0, 0, 1])), t = u.slice(0), i, j;
+              for (i = 1; i < iter; i++) {
+                u = gsHmac(pads, u);
+                for (j = 0; j < 32; j++) t[j] ^= u[j];
+              }
+              return t;
+            }
+            // Secreto del login web GXV34xx: sha256(user:nonce:hex(HMAC(sha256(mac), PBKDF2(pw, rand, 10000))))
+            function gsGxvSecret(user, pw, nonce, randHex, mac) {
+              var m = gsPbkdf2(gsUtf8(pw), gsUnhex(randHex), 10000);
+              var g = gsHex(gsHmac(gsHmacPads(gsSha256Bytes(gsUtf8(mac))), m));
+              return gsHex(gsSha256Bytes(gsUtf8(user + ':' + nonce + ':' + g)));
+            }
+            
+            function enc(o) {
+              var a = [], key;
+              for (key in o) { if (o.hasOwnProperty(key)) a.push(encodeURIComponent(key) + '=' + encodeURIComponent(o[key])); }
+              return a.join('&');
+            }
+            function parse(t) { try { return JSON.parse(t); } catch (e) { return null; } }
+            function usable(v) { return v !== undefined && v !== null && String(v) !== '' && !/^\{\$/.test(String(v)); }
+            function cookieHeader() {
+              var a = [], key;
+              for (key in cookies) { if (cookies.hasOwnProperty(key)) a.push(key + '=' + cookies[key]); }
+              return a.join('; ');
+            }
+            function keepCookies(r) {
+              // Guarda las cookies que el teléfono mande en Set-Cookie (TRACKID, session-identity, session-role).
+              if (typeof r.getHeaders !== 'function') return;
+              var hs = r.getHeaders(true) || {}, key, list, i, m;
+              for (key in hs) {
+                if (!hs.hasOwnProperty(key) || key.toLowerCase() !== 'set-cookie') continue;
+                list = hs[key];
+                if (!(list instanceof Array)) list = [list];
+                for (i = 0; i < list.length; i++) {
+                  m = String(list[i]).match(/^\s*([^=;\s]+)=([^;]*)/);
+                  if (m && !/^(httponly|samesite|secure|path|expires|max-age|domain)$/i.test(m[1])) cookies[m[1]] = m[2];
+                }
+              }
+            }
+            var last = { status: '', text: '' };
+            function request(method, path, data, url0) {
+              var r = new HttpRequest(), ch = cookieHeader(), b = url0 || base, url = b + path, t;
+              // Encabezados de navegador: el teléfono responde 403 al login sin Origin/Referer.
+              r.addHeader('User-Agent: Mozilla/5.0 (Zabbix GS-Monitor)');
+              r.addHeader('Accept: application/json, text/plain, */*');
+              r.addHeader('Origin: ' + b);
+              r.addHeader('Referer: ' + b + '/');
+              r.addHeader('X-Requested-With: XMLHttpRequest');
+              if (ch) r.addHeader('Cookie: ' + ch);
+              if (method === 'POST') {
+                r.addHeader('Content-Type: application/x-www-form-urlencoded');
+                t = r.post(url, enc(data));
+              } else {
+                t = r.get(url + (data ? '?' + enc(data) : ''));
+              }
+              keepCookies(r);
+              last.status = (typeof r.getStatus === 'function') ? r.getStatus() : '?';
+              last.text = String(t);
+              return t;
+            }
+            function snippet() {
+              return 'HTTP ' + last.status + ': ' + last.text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 120);
+            }
+            
+            // 0) Familia: se identifica por la página inicial (sin login, no gasta intentos).
+            //    GRP: web React (/static/js/main.*, <div id="root">). GXP: cualquier otra web que conteste 200 por su puerto.
+            //    La macro GS.FAMILY (= GXP o GRP) la fuerza y se salta esta detección.
+            var B = {
+              GXP: String(p.gxp_scheme || 'http') + '://' + p.host + ':' + String(p.gxp_port || '80'),
+              GRP: String(p.grp_scheme || 'https') + '://' + p.host + ':' + String(p.grp_port || '443'),
+              GXV: String(p.gxv_scheme || 'https') + '://' + p.host + ':' + String(p.gxv_port || '443')
+            };
+            function looksGRP(t) { return /\/static\/js\/main\.|id="root"|GRP2\d{3}/.test(t); }
+            var fam = String(p.family || '').toUpperCase();
+            if (fam !== 'GXP' && fam !== 'GRP' && fam !== 'GXV') {
+              fam = '';
+              var tries = [B.GXP, B.GRP], i, t, seen = [];
+              for (i = 0; i < tries.length && !fam; i++) {
+                try {
+                  t = String(request('GET', '/', null, tries[i]));
+                  seen.push(tries[i] + ' HTTP ' + last.status);
+                  if (looksGRP(t)) {
+                    // GXV34xx también tiene web React: se distingue por /api/sysinfo/basic (público, sin login).
+                    fam = 'GRP';
+                    try {
+                      var si = parse(request('GET', '/api/sysinfo/basic', null, tries[i]));
+                      if (si && si.data && /GXV/i.test(String(si.data.product_name || si.data.product || ''))) fam = 'GXV';
+                    } catch (e2) { }
+                  }
+                  else if (i === 0 && /^2/.test(String(last.status))) fam = 'GXP';  // la web normal del GXP contesta 200 en http:80
+                } catch (e) { seen.push(tries[i] + ' ' + String(e).substring(0, 60)); }
+              }
+              if (!fam) {
+                fam = 'GXP';
+                out.errors.push('familia: no identificada (' + seen.join('; ') + '); se intenta como GXP. Fíjala con la macro GS.FAMILY');
+              }
+            }
+            out.family = fam;
+            base = B[fam];
+            out.base = base;
+            cookies = {};
+            
+            // 1-GXV) GXV34xx: web /api con token. nonce + PBKDF2-HMAC-SHA256 (10000) + HMAC(sha256(MAC)) + SHA256 (como su web).
+            //        Un solo intento de login; si falla se informa failTimes y no se reintenta.
+            var QOSP = ['1558', '1559', '1560', '51', '87'];
+            var CODECP = { '1': ['57', '58', '59', '60', '61', '62', '46', '98'], '2': ['451', '452', '453', '454', '455', '456', '457', '458'],
+                           '3': ['551', '552', '553', '554', '555', '556', '557', '558'], '4': ['651', '652', '653', '654', '655', '656', '657', '658'] };
+            var VOC = { '0': 'PCMU', '2': 'G.726-32', '3': 'GSM', '4': 'G.723.1', '8': 'PCMA', '9': 'G.722', '18': 'G.729A/B', '98': 'iLBC', '123': 'Opus' };
+            function codecList(get, n) {
+              var a = [], seen = {}, i, v, nm;
+              for (i = 0; i < CODECP[n].length; i++) {
+                v = get(CODECP[n][i]);
+                if (v === undefined || v === null || String(v) === '') continue;
+                nm = VOC[String(v)] || ('códec ' + v);
+                if (!seen[nm]) { seen[nm] = 1; a.push(nm); }
+              }
+              return a.join(', ');
+            }
+            function num(v) { return (v === undefined || v === null || String(v) === '' || isNaN(parseInt(v, 10))) ? null : parseInt(v, 10); }
+            if (fam === 'GXV') {
+              base = B.GXV;
+              out.base = base;
+              var gtok = null;
+              var gx = function (method, path, body) {
+                var r = new HttpRequest(), t;
+                var u = base + path + (path.indexOf('?') >= 0 ? '&' : '?') + 'time=' + new Date().getTime();
+                r.addHeader('Content-Type: application/json');
+                r.addHeader('Accept: application/json, text/plain, */*');
+                r.addHeader('Authorization: Bearer ' + (gtok || 'null'));
+                t = (method === 'POST') ? r.post(u, body === undefined ? '{}' : JSON.stringify(body)) : r.get(u);
+                last.status = (typeof r.getStatus === 'function') ? r.getStatus() : '?';
+                last.text = String(t);
+                return parse(t);
+              };
+              var gpw = usable(p.pass_gxv) ? p.pass_gxv : p.password;
+              var guser = String(p.user || 'admin');
+              if (!usable(gpw)) {
+                out.errors.push('login: contraseña de GXV y genérica vacías o sin resolver (macros GS.PASSCODE); no se intenta');
+              } else {
+                try {
+                  var sinfo = gx('GET', '/api/sysinfo/basic');
+                  var gmac = (sinfo && sinfo.data) ? String(sinfo.data.mac || '') : '';
+                  var gn = gx('GET', '/api/auth/nonce?username=' + encodeURIComponent(guser));
+                  var gnd = (gn && gn.data) ? gn.data : {};
+                  if (!gmac || !gnd.nonce || !gnd.rand) {
+                    out.errors.push('login: sin MAC o nonce del GXV, no se intenta (' + snippet() + ')');
+                  } else {
+                    var gsec = gsGxvSecret(guser, gpw, String(gnd.nonce), String(gnd.rand).substring(0, 16), gmac);
+                    var gl = gx('POST', '/api/auth/login', { username: guser, password: gsec, isWakeup: 0 });
+                    var gld = (gl && gl.data) ? gl.data : {};
+                    if (gld.token) {
+                      gtok = gld.token;
+                      out.login = 'token';
+                    } else if (gld.failTimes !== undefined || gld.code !== undefined) {
+                      out.errors.push('login: rechazado (code ' + gld.code + ', failTimes ' + gld.failTimes + '; code 2 = bloqueado). Revisa la macro GS.PASSCODE de GXV');
+                    } else {
+                      out.errors.push('login: ' + snippet());
+                    }
+                  }
+                } catch (e) {
+                  out.errors.push('login: ' + e);
+                }
+              }
+              if (gtok) {
+                try {
+                  var ga = gx('GET', '/api/status/account'), gl2 = (ga && ga.data && ga.data.list instanceof Array) ? ga.data.list : null;
+                  if (gl2) {
+                    var gb = [], gi;
+                    for (gi = 0; gi < gl2.length; gi++) {
+                      var ac = gl2[gi];
+                      // En el GXV la cuenta 1 es id 0: se normaliza a 1..16 como en GXP/GRP.
+                      gb.push({ id: parseInt(ac.id, 10) + 1, sip_id: String(ac.number || ''), name: String(ac.name || ''),
+                                sip_server: String(ac.server || ''), reg: parseInt(ac.registedStatus, 10) || 0, enable: String(ac.activeStatus) });
+                    }
+                    out.accounts = { response: 'success', body: gb };
+                  } else {
+                    out.accounts = { response: 'error', body: 'status/account sin datos ' + snippet() };
+                  }
+                  var gln = gx('GET', '/api/call/lines'), glist = (gln && gln.data && gln.data.list instanceof Array) ? gln.data.list : null;
+                  out.lines = glist ? { response: 'success', body: glist } : { response: 'error', body: snippet() };
+                  out.phone_status = glist ? { response: 'success', body: glist.length ? 'busy' : 'available' } : { response: 'error', body: snippet() };
+                  var gq = [], gk;
+                  for (gi = 0; gi < QOSP.length; gi++) gq.push('P' + QOSP[gi]);
+                  for (gi = 0; gi < CODECP['1'].length; gi++) gq.push('P' + CODECP['1'][gi]);
+                  var gpv = gx('GET', '/api/pvalues?p=' + gq.join(','));
+                  var GV = (gpv && gpv.data && typeof gpv.data === 'object') ? gpv.data : null;
+                  var gget = function (k) { return GV ? (GV['P' + k] !== undefined ? GV['P' + k] : GV[k]) : undefined; };
+                  if (GV) {
+                    out.qos = { sip: num(gget('1558')), rtp: num(gget('1559')), video: num(gget('1560')), rtp_src: 'P1559' };
+                    out.codecs = { '1': codecList(gget, '1') };
+                  } else {
+                    out.errors.push('pvalues: sin datos ' + snippet());
+                  }
+                  var gv = gx('GET', '/api/devVolume');
+                  if (gv && gv.data && gv.data.call) out.volume = gv.data;
+                  out.values = { response: 'success', body: {} };
+                } catch (e) {
+                  out.errors.push('GXV: ' + e);
+                }
+                if (String(p.logout) === '1') {
+                  try { gx('POST', '/api/auth/logout'); } catch (e) { out.errors.push('logout: ' + e); }
+                }
+              } else {
+                out.phone_status = { response: 'error', body: 'sin sesión' };
+                out.accounts = { response: 'error', body: 'sin sesión' };
+                out.lines = { response: 'error', body: 'sin sesión' };
+              }
+              return JSON.stringify(out);
+            }
+            // 1) Login (token + SHA256; si no hay token, contraseña en claro)
+            //    Contraseña: la macro GS.PASSCODE con contexto de la familia y, si está vacía, la genérica.
+            //    Protección anti-bloqueo: sin contraseña no se intenta (cada intento fallido suma al contador del teléfono).
+            var password = usable(fam === 'GRP' ? p.pass_grp : p.pass_gxp) ? (fam === 'GRP' ? p.pass_grp : p.pass_gxp) : p.password;
+            var sid = null, lg = null;
+            if (!usable(password)) {
+              out.errors.push('login: contraseña de ' + fam + ' y genérica vacías o sin resolver (macros GS.PASSCODE); no se intenta para no bloquear al admin del teléfono');
+            } else {
+              try {
+                var acc = parse(request('POST', '/cgi-bin/access', { username: p.user, password: password }));
+                var token = (acc && acc.response === 'success' && typeof acc.body === 'string') ? acc.body : '';
+                var lgText = request('POST', '/cgi-bin/dologin', { username: p.user, password: token ? gsSha256(password + token) : password });
+                lg = parse(lgText);
+                if (lg && lg.response === 'success' && lg.body && lg.body.sid) {
+                  sid = lg.body.sid;
+                  cookies['session-identity'] = sid;
+                  cookies['session-role'] = lg.body.role || p.user;
+                  out.login = token ? 'token' : 'plain';
+                  if (fam === 'GRP') {
+                    // Cookies que agrega la web del GRP; sin ellas responde "Unauthorized" o valores vacíos.
+                    cookies.oem = '0';
+                    cookies.locale = 'en';
+                    if (lg.body.mac) cookies.device = String(lg.body.mac).toUpperCase();
+                    if (lg.body.ver) cookies.version = String(lg.body.ver);
+                    cookies.sid = sid;
+                  }
+                } else if (lg && /^wrong/.test(String(lg.body))) {
+                  out.errors.push('login: contraseña incorrecta (' + lg.body + ' = intentos fallidos). Revisa la macro GS.PASSCODE de ' + fam + ': el teléfono bloquea al admin tras varios intentos');
+                } else if (lg) {
+                  out.errors.push('login: ' + JSON.stringify(lg).substring(0, 160));
+                } else {
+                  out.errors.push('login: respuesta no JSON (bloqueo por intentos fallidos o acceso web restringido) ' + snippet());
+                }
+              } catch (e) {
+                out.errors.push('login: ' + e);
+              }
+            }
+            
+            function jsonOrError(t) {
+              var j = parse(t);
+              if (!j) return { response: 'error', body: 'respuesta no JSON (' + String(t).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').substring(0, 60) + ')' };
+              return j;
+            }
+            
+            if (fam === 'GXP') {
+              // 2) CTI (con sesión si la hay; el passcode se manda siempre para firmware anterior)
+              var cti = function (ep) {
+                try { return jsonOrError(request('GET', '/cgi-bin/' + ep, { passcode: password })); }
+                catch (e) { return { response: 'error', body: String(e).substring(0, 120) }; }
+              };
+              out.phone_status = cti('api-get_phone_status');
+              out.accounts = cti('api-get_accounts');
+              out.lines = cti('api-get_line_status');
+              // 3) Inventario y configuración (solo con sesión)
+              if (sid) {
+                try {
+                  out.values = parse(request('POST', '/cgi-bin/api.values.get', { sid: sid, request: p.keys })) || { response: 'error' };
+                  // QoS y códecs en una consulta aparte: si alguna clave no existe en este firmware no rompe Feature Key Sync.
+                  var xk = ['P38', 'P1558', 'P1559'], xn, xi;
+                  for (xn in CODECP) { if (CODECP.hasOwnProperty(xn)) { for (xi = 0; xi < 8; xi++) xk.push('P' + CODECP[xn][xi]); } }
+                  var xv = parse(request('POST', '/cgi-bin/api.values.get', { sid: sid, request: xk.join(':') }));
+                  var XB = (xv && xv.response === 'success' && xv.body && typeof xv.body === 'object') ? xv.body : null;
+                  if (XB) {
+                    var xget = function (k) { return XB['P' + k]; };
+                    var r1559 = num(xget('1559'));
+                    out.qos = { sip: num(xget('1558')), rtp: (r1559 !== null) ? r1559 : num(xget('38')), rtp_src: (r1559 !== null) ? 'P1559' : 'P38' };
+                    out.codecs = {};
+                    for (xn in CODECP) { if (CODECP.hasOwnProperty(xn)) out.codecs[xn] = codecList(xget, xn); }
+                  } else {
+                    out.errors.push('values QoS/códecs: ' + JSON.stringify(xv).substring(0, 120));
+                  }
+                } catch (e) {
+                  out.values = { response: 'error' };
+                  out.errors.push('values: ' + e);
+                }
+              }
+            } else if (sid) {
+              // 2) GRP: estado por POST con sid (como su web)
+              var post = function (ep, data) {
+                try { return jsonOrError(request('POST', '/cgi-bin/' + ep, data)); }
+                catch (e) { return { response: 'error', body: String(e).substring(0, 120) }; }
+              };
+              out.phone_status = post('api-get_phone_status', { sid: sid, update_session: 'false' });
+              out.lines = post('api-get_line_status', { line: '-1', sid: sid });
+              // 3) GRP: cuentas, registro y configuración por config_get (mismos números P que el GXP, sin la "P")
+              var MAP = { userid: [35, 404, 504, 604], name: [270, 417, 517, 617], enable: [271, 401, 501, 601],
+                          server: [47, 402, 502, 602], fks: [2325, 2425, 2525, 2625] };
+              var pv = ['68', '1558', '1559'], n, k, cn;
+              for (cn in CODECP) { if (CODECP.hasOwnProperty(cn)) pv = pv.concat(CODECP[cn]); }
+              for (n = 0; n < 4; n++) {
+                for (k in MAP) { if (MAP.hasOwnProperty(k)) pv.push(String(MAP[k][n])); }
+                pv.push('AccountRegistered' + (n + 1));
+              }
+              var cfg = null;
+              try {
+                cfg = parse(request('GET', '/cgi-bin/config_get', { pvalues: pv.join(','), sid: sid, update_session: 'false', _nocache_: String(new Date().getTime()) }));
+              } catch (e) { out.errors.push('config_get: ' + e); }
+              var V = {}, A = {};
+              if (cfg && cfg.configs instanceof Array) {
+                for (n = 0; n < cfg.configs.length; n++) {
+                  var c = cfg.configs[n], key = String(c.pvalue).replace(/^P/, '');
+                  V[key] = (c.value === undefined || c.value === null) ? '' : String(c.value);
+                  A[key] = c.alias || '';
+                }
+                if (A['402'] && A['402'] !== 'account.2.sip.server.1.address') out.errors.push('config_get: P402 es ' + A['402'] + ' (se esperaba el servidor de la cuenta 2)');
+                var body = [], vals = { '68': V['68'] === undefined ? '' : V['68'] };
+                for (n = 0; n < 4; n++) {
+                  body.push({ id: n + 1, sip_id: V[String(MAP.userid[n])] || '', name: V[String(MAP.name[n])] || '',
+                              sip_server: V[String(MAP.server[n])] || '', reg: parseInt(V['AccountRegistered' + (n + 1)], 10) || 0,
+                              enable: V[String(MAP.enable[n])] || '' });
+                  vals['P' + MAP.fks[n]] = V[String(MAP.fks[n])] === undefined ? '' : V[String(MAP.fks[n])];
+                }
+                out.accounts = { response: 'success', body: body };
+                out.values = { response: 'success', body: vals };
+                var vget = function (k2) { return V[k2]; };
+                out.qos = { sip: num(V['1558']), rtp: num(V['1559']), rtp_src: 'P1559' };
+                out.codecs = {};
+                for (cn in CODECP) { if (CODECP.hasOwnProperty(cn)) out.codecs[cn] = codecList(vget, cn); }
+                if (V['271'] === '' && V['35'] === '') out.errors.push('config_get: valores vacíos (la sesión no tiene permiso; revisar cookies/firmware)');
+              } else {
+                out.accounts = { response: 'error', body: 'config_get sin datos ' + snippet() };
+                out.values = { response: 'error' };
+              }
+            } else {
+              out.phone_status = { response: 'error', body: 'sin sesión' };
+              out.accounts = { response: 'error', body: 'sin sesión' };
+              out.lines = { response: 'error', body: 'sin sesión' };
+            }
+            
+            if (sid && String(p.logout) === '1') {
+              try { request('POST', '/cgi-bin/dologout', { sid: sid }); } catch (e) { out.errors.push('logout: ' + e); }
+            }
+            
+            return JSON.stringify(out);
+          description: 'Detecta la familia (GXP, GRP o GXV) por la página inicial y /api/sysinfo/basic, sin login. Luego inicia sesión con la contraseña de esa familia (access + dologin con SHA256), lee estado, cuentas y configuración con el método de cada familia, y cierra sesión. GXP: CTI + api.values.get. GRP: cookies de su web, estado por POST y config_get.'
+          timeout: '{$GS.TIMEOUT}'
+          parameters:
+            - name: family
+              value: '{$GS.FAMILY}'
+            - name: grp_port
+              value: '{$GS.PORT:"GRP"}'
+            - name: grp_scheme
+              value: '{$GS.SCHEME:"GRP"}'
+            - name: gxp_port
+              value: '{$GS.PORT:"GXP"}'
+            - name: gxp_scheme
+              value: '{$GS.SCHEME:"GXP"}'
+            - name: gxv_port
+              value: '{$GS.PORT:"GXV"}'
+            - name: gxv_scheme
+              value: '{$GS.SCHEME:"GXV"}'
+            - name: host
+              value: '{HOST.CONN}'
+            - name: keys
+              value: '{$GS.WEBAPI.KEYS}'
+            - name: logout
+              value: '{$GS.LOGOUT}'
+            - name: password
+              value: '{$GS.PASSCODE}'
+            - name: pass_grp
+              value: '{$GS.PASSCODE:"GRP"}'
+            - name: pass_gxp
+              value: '{$GS.PASSCODE:"GXP"}'
+            - name: pass_gxv
+              value: '{$GS.PASSCODE:"GXV"}'
+            - name: user
+              value: '{$GS.WEBAPI.USER}'
+          tags:
+            - tag: component
+              value: raw
+        - uuid: 1f0aea48547b4563b9876723aeb63210
+          name: 'API: errores'
+          type: DEPENDENT
+          key: gs.poll.errors
+          delay: '0'
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  return (d.errors && d.errors.length) ? d.errors.join(' | ').substring(0, 250) : 'ok';
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: cti
+        - uuid: f1e658c1a997434aa546f40a89374da6
+          name: 'QoS RTP (DSCP)'
+          type: DEPENDENT
+          key: gs.qos.rtp
+          delay: '0'
+          history: 90d
+          description: 'Layer 3 QoS de la voz configurado en el teléfono (DSCP). GRP y GXV: P1559 (validado). GXP: P1559 o, si está vacío, P38 (no validado). 46 = EF.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  if (!d.qos || d.qos.rtp === null || d.qos.rtp === undefined) throw 'sin dato de QoS RTP';
+                  return d.qos.rtp;
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: qos
+          triggers:
+            - uuid: fd20d8156b444cd4b65af2d0ab7f041e
+              expression: 'last(/Grandstream IP Phone by HTTP/gs.qos.rtp)<>{$GS.DSCP.RTP}'
+              name: 'Grandstream {HOST.NAME}: QoS de voz con DSCP {ITEM.LASTVALUE} (se espera {$GS.DSCP.RTP})'
+              priority: WARNING
+              description: 'El teléfono marca el audio con un DSCP distinto del esperado; si la red prioriza solo EF (46), la voz no tiene prioridad.'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: config
+        - uuid: b6b0164b428f4f6da88eebd7e43f9dcc
+          name: 'QoS SIP (DSCP)'
+          type: DEPENDENT
+          key: gs.qos.sip
+          delay: '0'
+          history: 90d
+          description: 'Layer 3 QoS de la señalización SIP (P1558, validado en GRP y GXV). 26 = AF31.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  if (!d.qos || d.qos.sip === null || d.qos.sip === undefined) throw 'sin dato de QoS SIP';
+                  return d.qos.sip;
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: qos
+          triggers:
+            - uuid: a3be13ff48664386be729d26e7793f73
+              expression: 'last(/Grandstream IP Phone by HTTP/gs.qos.sip)<>{$GS.DSCP.SIP}'
+              name: 'Grandstream {HOST.NAME}: QoS SIP con DSCP {ITEM.LASTVALUE} (se espera {$GS.DSCP.SIP})'
+              priority: WARNING
+              description: 'El teléfono marca la señalización SIP con un DSCP distinto del esperado.'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: config
+        - uuid: 471edd15e39c44eda6721582add3ed6a
+          name: 'SNMP: descripción del sistema'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.1.0
+          key: gs.snmp.sysdescr
+          delay: 1h
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'sysDescr (MIB-II): kernel del teléfono.'
+          inventory_link: OS
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+        - uuid: 85a573e6dfd547e99536c9317852cc92
+          name: 'SNMP: nombre del sistema'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.5.0
+          key: gs.snmp.sysname
+          delay: 1h
+          history: 90d
+          value_type: CHAR
+          trends: '0'
+          description: 'sysName: <modelo>_<MAC>, ej. gxp2135_000b82cc92be.'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: inventario
+            - tag: source
+              value: snmp
+        - uuid: f75426814bd94b5c85440337a10430ac
+          name: 'SNMP: uptime del sistema'
+          type: SNMP_AGENT
+          snmp_oid: 1.3.6.1.2.1.1.3.0
+          key: gs.snmp.uptime
+          delay: '{$GS.SNMP.INTERVAL}'
+          history: 90d
+          units: uptime
+          description: 'sysUpTime (MIB-II). Detecta reinicios: PoE, energía o cuelgues.'
+          preprocessing:
+            - type: MULTIPLIER
+              parameters:
+                - '0.01'
+          tags:
+            - tag: component
+              value: sistema
+            - tag: source
+              value: snmp
+          triggers:
+            - uuid: f98f01b39c664c18ba979ca6809b22a8
+              expression: 'last(/Grandstream IP Phone by HTTP/gs.snmp.uptime)<10m'
+              name: 'Grandstream {HOST.NAME}: el teléfono se reinició (uptime {ITEM.LASTVALUE})'
+              priority: WARNING
+              description: 'Reinicio en los últimos 10 minutos. Si no fue programado, revisar PoE/energía del puerto.'
+              manual_close: 'YES'
+              tags:
+                - tag: scope
+                  value: availability
+            - uuid: 5ef70facf71e44c78b57af0144f4bdc7
+              expression: 'nodata(/Grandstream IP Phone by HTTP/gs.snmp.uptime,{$GS.SNMP.NODATA})=1'
+              name: 'Grandstream {HOST.NAME}: SNMP no responde ({$GS.SNMP.NODATA})'
+              priority: WARNING
+              description: 'Responde a ping pero no a SNMP: SNMP deshabilitado, versión o comunidad incorrecta (macro SNMP_COMMUNITY) o falta la interfaz SNMP en el host. Sin SNMP no hay registro ni DND.'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: availability
+        - uuid: 8075764ab92c4d0b8e41e28655c8248c
+          name: 'Volumen de llamada'
+          type: DEPENDENT
+          key: gs.volume.call
+          delay: '0'
+          history: 90d
+          description: 'Solo GXV34xx (/api/devVolume). Escala del modelo: en GXV3450 de 1 a 8. Sin dato en GXP y GRP (no lo exponen).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.volume.call.cur
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: audio
+          triggers:
+            - uuid: 1b64c3f14fcb47cb8276674704a48583
+              expression: 'last(/Grandstream IP Phone by HTTP/gs.volume.call)>={$GS.VOLUME.CALL.MAX}'
+              name: 'Grandstream {HOST.NAME}: volumen de llamada al máximo ({ITEM.LASTVALUE})'
+              priority: INFO
+              description: 'Puede indicar que el usuario oye bajo (revisar calidad de audio) o provocar eco del lado remoto.'
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: config
+        - uuid: dc58c85008bd494899db325dcaedbf70
+          name: 'Volumen de timbre'
+          type: DEPENDENT
+          key: gs.volume.ring
+          delay: '0'
+          history: 90d
+          description: 'Solo GXV34xx (/api/devVolume). En GXV3450 de 0 a 15.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.volume.ring.cur
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: gs.poll
+          tags:
+            - tag: component
+              value: audio
+        - uuid: 875096c93a8e41d195219021b585d757
+          name: 'Ping: pérdida'
+          type: SIMPLE
+          key: 'icmppingloss[,10]'
+          delay: '{$GS.ICMP.INTERVAL}'
+          history: 90d
+          value_type: FLOAT
+          units: '%'
+          tags:
+            - tag: component
+              value: red
+          triggers:
+            - uuid: 54eb9c73d55e4609a660e4a663643a7d
+              expression: 'min(/Grandstream IP Phone by HTTP/icmppingloss[,10],5m)>{$GS.ICMP.LOSS.WARN}'
+              name: 'Grandstream {HOST.NAME}: pérdida de paquetes alta (>{$GS.ICMP.LOSS.WARN}% por 5 min)'
+              priority: WARNING
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: af3a5fb100684c978e3fcabddf86d800
+          name: 'Ping: latencia promedio'
+          type: SIMPLE
+          key: 'icmppingsec[,10,,,,avg]'
+          delay: '{$GS.ICMP.INTERVAL}'
+          history: 90d
+          value_type: FLOAT
+          units: s
+          tags:
+            - tag: component
+              value: red
+          triggers:
+            - uuid: 01f0b0e9a85b4059965088895f86dfc5
+              expression: 'min(/Grandstream IP Phone by HTTP/icmppingsec[,10,,,,avg],5m)>{$GS.ICMP.RTT.WARN}'
+              name: 'Grandstream {HOST.NAME}: latencia alta (>{$GS.ICMP.RTT.WARN}s por 5 min)'
+              priority: WARNING
+              dependencies:
+                - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                  expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              tags:
+                - tag: scope
+                  value: performance
+        - uuid: 7f4aa8761f794b9095a0c81763e2d35f
+          name: 'Ping: disponible'
+          type: SIMPLE
+          key: 'icmpping[,3]'
+          delay: '{$GS.ICMP.INTERVAL}'
+          history: 90d
+          valuemap:
+            name: 'GS arriba/abajo'
+          tags:
+            - tag: component
+              value: red
+          triggers:
+            - uuid: ceebe65c770c4131905f5fdd6da299fc
+              expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+              name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+              priority: HIGH
+              description: 'Tres lecturas seguidas sin respuesta: apagado, sin PoE, cable o puerto caído.'
+              tags:
+                - tag: scope
+                  value: availability
+      discovery_rules:
+        - uuid: 71c05d83694645108208b14f7899bd2a
+          name: 'Cuentas SIP configuradas'
+          type: DEPENDENT
+          key: gs.accounts.discovery
+          delay: '0'
+          filter:
+            conditions:
+              - macro: '{#SIPID}'
+                value: .+
+                formulaid: A
+          lifetime: 30d
+          enabled_lifetime_type: DISABLE_NEVER
+          description: 'Descubre las cuentas con usuario SIP configurado (sip_id no vacío) en la consulta web ({$GS.INTERVAL}). El registro de cada cuenta se lee por SNMP cada {$GS.SNMP.INTERVAL}.'
+          item_prototypes:
+            - uuid: d44bc15c709d4e6999b34bd8992f095a
+              name: 'Cuenta {#ACCOUNT} ({#SIPID}): códecs preferidos'
+              type: DEPENDENT
+              key: 'gs.account.codecs[{#ACCOUNT}]'
+              delay: '0'
+              history: 90d
+              value_type: CHAR
+              trends: '0'
+              description: 'Orden de códecs configurado en la cuenta (sin repetidos). GXP/GRP: P57-P98, P451, P551, P651 (validado en GRP); GXV: solo cuenta 1. El códec usado en cada llamada no lo expone el teléfono.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.codecs["{#ACCOUNT}"]'
+                  error_handler: DISCARD_VALUE
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              master_item:
+                key: gs.poll
+              tags:
+                - tag: component
+                  value: config
+                - tag: extension
+                  value: '{#SIPID}'
+            - uuid: fdb85c1d67424c1f877aa3aec12fda8f
+              name: 'Cuenta {#ACCOUNT} ({#SIPID}): Feature Key Sync'
+              type: DEPENDENT
+              key: 'gs.account.fks[{#ACCOUNT}]'
+              delay: '0'
+              history: 90d
+              description: 'account.N.broadsoft.syncFeatureKey = P(2225 + 100·N): P2325, P2425, P2525, P2625 (validado con metaconfig de GXP2130 y GXP2135). 1 = DND/desvío sincronizados con el conmutador.'
+              valuemap:
+                name: 'GS sí/no'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var d = JSON.parse(value), k = 'P' + (2225 + 100 * {#ACCOUNT});
+                      var v = (d.values && d.values.body) ? d.values.body[k] : undefined;
+                      if (v === undefined || v === '') throw 'sin dato de ' + k;
+                      return v;
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              master_item:
+                key: gs.poll
+              tags:
+                - tag: component
+                  value: config
+                - tag: extension
+                  value: '{#SIPID}'
+              trigger_prototypes:
+                - uuid: d1fb6daa81c04041849cd29b6b19d3cf
+                  expression: 'find(/Grandstream IP Phone by HTTP/gs.account.fks[{#ACCOUNT}],,"regexp","{$GS.EXPECT.FKS.RE}")=0'
+                  name: 'Grandstream {HOST.NAME}: cuenta {#ACCOUNT} ({#SIPID}) con Feature Key Sync fuera de estándar ({ITEM.LASTVALUE})'
+                  priority: WARNING
+                  description: 'No coincide con {$GS.EXPECT.FKS.RE}. Sin Feature Key Sync, el DND del teléfono no se refleja en el conmutador.'
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                      expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: config
+            - uuid: e53911f8b9cf44019cd966cb64fcb033
+              name: 'Cuenta {#ACCOUNT} ({#SIPID}): registro'
+              type: SNMP_AGENT
+              snmp_oid: '1.3.6.1.4.1.42397.1.3.2.1.{#ACCOUNT}.0.0'
+              key: 'gs.account.reg[{#ACCOUNT}]'
+              delay: '{$GS.SNMP.INTERVAL}'
+              history: 90d
+              description: 'SNMP 42397.1.3.2.1.N (validado: 1 = registrada). Servidor {#SIPSERVER} · nombre {#ACCNAME}.'
+              valuemap:
+                name: 'GS registro'
+              tags:
+                - tag: component
+                  value: registro
+                - tag: extension
+                  value: '{#SIPID}'
+                - tag: source
+                  value: snmp
+              trigger_prototypes:
+                - uuid: a14bdfc0eb7346b29d95622869dbf0cc
+                  expression: 'max(/Grandstream IP Phone by HTTP/gs.account.reg[{#ACCOUNT}],#2)=0'
+                  name: 'Grandstream {HOST.NAME}: extensión {#SIPID} no registrada'
+                  priority: HIGH
+                  description: 'El teléfono reporta por SNMP la cuenta {#ACCOUNT} ({#SIPID}@{#SIPSERVER}) sin registro en dos lecturas seguidas.'
+                  dependencies:
+                    - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                      expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: availability
+            - uuid: 1e136958676e44d39b716fdfc07e80e7
+              name: 'Cuenta {#ACCOUNT} ({#SIPID}): servidor SIP'
+              type: DEPENDENT
+              key: 'gs.account.server[{#ACCOUNT}]'
+              delay: '0'
+              history: 90d
+              value_type: CHAR
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.accounts.body[?(@.id=={#ACCOUNT})].sip_server.first()'
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - 1d
+              master_item:
+                key: gs.poll
+              tags:
+                - tag: component
+                  value: config
+                - tag: extension
+                  value: '{#SIPID}'
+              trigger_prototypes:
+                - uuid: 0de64a86d48445218761da0d406d789c
+                  expression: 'last(/Grandstream IP Phone by HTTP/gs.account.server[{#ACCOUNT}])<>last(/Grandstream IP Phone by HTTP/gs.account.server[{#ACCOUNT}],#1:now-2d)'
+                  name: 'Grandstream {HOST.NAME}: cuenta {#ACCOUNT} ({#SIPID}) cambió de servidor SIP respecto a hace 2 días (ahora {ITEM.LASTVALUE})'
+                  priority: AVERAGE
+                  description: 'El servidor SIP de la cuenta es distinto al de hace 2 días. Ver History del item para el anterior. Revisar autoprovisionamiento o cambios manuales.'
+                  manual_close: 'YES'
+                  dependencies:
+                    - name: 'Grandstream {HOST.NAME}: sin respuesta a ping'
+                      expression: 'max(/Grandstream IP Phone by HTTP/icmpping[,3],#3)=0'
+                  tags:
+                    - tag: scope
+                      value: cambio
+          master_item:
+            key: gs.poll
+          lld_macro_paths:
+            - lld_macro: '{#ACCNAME}'
+              path: $.name
+            - lld_macro: '{#ACCOUNT}'
+              path: $.id
+            - lld_macro: '{#SIPID}'
+              path: $.sip_id
+            - lld_macro: '{#SIPSERVER}'
+              path: $.sip_server
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.accounts.body
+      tags:
+        - tag: class
+          value: telephony
+        - tag: target
+          value: grandstream
+      macros:
+        - macro: '{$GS.DND.KEY}'
+          value: DND
+          description: 'Tecla de la acción opcional Alternar DND (api-send_key). No funciona en GXP21xx 1.0.11.x.'
+        - macro: '{$GS.DND.MAX}'
+          value: 2h
+          description: 'Tiempo con DND activo para avisar.'
+        - macro: '{$GS.DSCP.RTP}'
+          value: '46'
+          description: 'DSCP esperado para la voz (RTP). 46 = EF.'
+        - macro: '{$GS.DSCP.SIP}'
+          value: '26'
+          description: 'DSCP esperado para la señalización SIP. 26 = AF31.'
+        - macro: '{$GS.EXPECT.FKS.RE}'
+          value: '.*'
+          description: 'Regex esperada de Feature Key Sync en cada cuenta. Recomendado: ^1$ (.* = no evaluar).'
+        - macro: '{$GS.FAMILY}'
+          description: 'Vacío = detectar sola la familia del teléfono. GXP, GRP o GXV = forzarla (sin detección).'
+        - macro: '{$GS.ICMP.INTERVAL}'
+          value: 1m
+          description: 'Frecuencia de ping.'
+        - macro: '{$GS.ICMP.LOSS.WARN}'
+          value: '20'
+          description: 'Pérdida (%) para alertar.'
+        - macro: '{$GS.ICMP.RTT.WARN}'
+          value: '0.15'
+          description: 'Latencia promedio (s) para alertar.'
+        - macro: '{$GS.INTERVAL}'
+          value: 6h
+          description: 'Frecuencia de la consulta web (cuentas, servidor SIP, Feature Key Sync). Cada consulta es un login web y saca a quien esté en la página del teléfono (sesión única), por eso es baja. Para una lectura inmediata: Execute now.'
+        - macro: '{$GS.LOGOUT}'
+          value: '1'
+          description: '1 = cerrar sesión al terminar para liberar la única sesión web del teléfono.'
+        - macro: '{$GS.NODATA}'
+          value: 13h
+          description: 'Sin datos de la consulta web este tiempo → aviso (mayor a 2 × {$GS.INTERVAL}).'
+        - macro: '{$GS.PASSCODE}'
+          type: SECRET_TEXT
+          description: 'Contraseña de admin de respaldo (secreta): se usa si la de la familia está vacía.'
+        - macro: '{$GS.PASSCODE:"GRP"}'
+          type: SECRET_TEXT
+          description: 'Contraseña de admin de los GRP (secreta). Vacía = usa {$GS.PASSCODE}.'
+        - macro: '{$GS.PASSCODE:"GXP"}'
+          type: SECRET_TEXT
+          description: 'Contraseña de admin de los GXP (secreta). Vacía = usa {$GS.PASSCODE}.'
+        - macro: '{$GS.PASSCODE:"GXV"}'
+          type: SECRET_TEXT
+          description: 'Contraseña de admin de los GXV34xx (secreta). Vacía = usa {$GS.PASSCODE}.'
+        - macro: '{$GS.PORT:"GRP"}'
+          value: '443'
+          description: 'Puerto web de los GRP (por http el login falla con HTTP 411).'
+        - macro: '{$GS.PORT:"GXP"}'
+          value: '80'
+          description: 'Puerto web de los GXP.'
+        - macro: '{$GS.PORT:"GXV"}'
+          value: '443'
+          description: 'Puerto web de los GXV34xx.'
+        - macro: '{$GS.SCHEME:"GRP"}'
+          value: https
+          description: 'Protocolo web de los GRP.'
+        - macro: '{$GS.SCHEME:"GXP"}'
+          value: http
+          description: 'Protocolo web de los GXP (http o https).'
+        - macro: '{$GS.SCHEME:"GXV"}'
+          value: https
+          description: 'Protocolo web de los GXV34xx.'
+        - macro: '{$GS.SNMP.INTERVAL}'
+          value: 1m
+          description: 'Frecuencia de las consultas SNMP (uptime, registro, DND).'
+        - macro: '{$GS.SNMP.NODATA}'
+          value: 10m
+          description: 'Sin respuesta SNMP este tiempo → aviso.'
+        - macro: '{$GS.TIMEOUT}'
+          value: 25s
+          description: 'Timeout total del item Script (login + consultas). El login del GXV calcula PBKDF2 (unos 3 s).'
+        - macro: '{$GS.VOLUME.CALL.MAX}'
+          value: '8'
+          description: 'Volumen de llamada que se considera "al máximo" (GXV3450: escala 1 a 8).'
+        - macro: '{$GS.WEBAPI.KEYS}'
+          value: 'P2325:P2425:P2525:P2625'
+          description: 'Claves a leer con api.values.get, separadas por dos puntos (Feature Key Sync de las cuentas 1 a 4).'
+        - macro: '{$GS.WEBAPI.USER}'
+          value: admin
+          description: 'Usuario web del teléfono (admin).'
+        - macro: '{$SNMP_COMMUNITY}'
+          value: public
+      valuemaps:
+        - uuid: e292a1226ca547efa42b59938b46aa21
+          name: 'GS arriba/abajo'
+          mappings:
+            - value: '0'
+              newvalue: Caído
+            - value: '1'
+              newvalue: Arriba
+        - uuid: c157201da9fe432989049aebaac78c2e
+          name: 'GS DND'
+          mappings:
+            - value: '0'
+              newvalue: Inactivo
+            - value: '1'
+              newvalue: Activo
+        - uuid: cc8670d779c14ef390f3034a1667de03
+          name: 'GS registro'
+          mappings:
+            - value: '0'
+              newvalue: 'No registrada'
+            - value: '1'
+              newvalue: Registrada
+        - uuid: de7a0de6cd4a498a80613dd6f28ff9e2
+          name: 'GS sí/no'
+          mappings:
+            - value: '0'
+              newvalue: 'No'
+            - value: '1'
+              newvalue: Sí
+  graphs:
+    - uuid: 16b2b24e47d545eb9e18106aff0106f8
+      name: 'Grandstream: latencia y pérdida'
+      graph_items:
+        - color: 2774A4
+          item:
+            host: 'Grandstream IP Phone by HTTP'
+            key: 'icmppingsec[,10,,,,avg]'
+        - sortorder: '1'
+          color: F63100
+          yaxisside: RIGHT
+          item:
+            host: 'Grandstream IP Phone by HTTP'
+            key: 'icmppingloss[,10]'
