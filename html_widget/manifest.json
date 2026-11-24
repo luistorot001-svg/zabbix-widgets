@@ -1,0 +1,19 @@
+{
+	"manifest_version": 2.0,
+	"id": "html_widget",
+	"type": "widget",
+	"name": "HTML",
+	"namespace": "HtmlWidget",
+	"version": "2.0.0",
+	"author": "luistorot001-svg",
+	"url": "https://github.com/luistorot001-svg/zabbix-widgets",
+	"description": "Muestra contenido HTML propio en un dashboard.",
+	"widget": {
+		"refresh_rate": 0
+	},
+	"actions": {
+		"widget.html_widget.view": {
+			"class": "WidgetView"
+		}
+	}
+}
