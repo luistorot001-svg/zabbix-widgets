@@ -1,0 +1,96 @@
+/* Widget Semáforo UP/DOWN */
+.sl {
+	--sl-color: #7f8c8d;
+	--sl-text-color: #ffffff;
+	--sl-text-size: 35;
+	--sl-light-size: 70;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	height: 100%;
+	box-sizing: border-box;
+	padding: 6px 10px;
+	overflow: hidden;
+	container-type: size;
+	text-decoration: none !important;
+}
+
+/* Fondo completo, con un degradado suave como en otros tableros. */
+.sl.sl-fill {
+	background-color: var(--sl-color);
+	background-image: linear-gradient(110deg, rgba(0, 0, 0, .10), rgba(255, 255, 255, .12));
+	color: var(--sl-text-color);
+}
+
+/* Círculo: la luz toma el color y el texto usa el color normal del tema. */
+.sl.sl-circle {
+	color: inherit;
+}
+
+.sl-lamp {
+	flex: none;
+	width: calc(var(--sl-light-size) * 1cqmin);
+	height: calc(var(--sl-light-size) * 1cqmin);
+	border-radius: 50%;
+	background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .45), rgba(255, 255, 255, 0) 55%),
+		var(--sl-color);
+	box-shadow: 0 0 calc(var(--sl-light-size) * .25cqmin) var(--sl-color);
+}
+
+.sl-texts {
+	min-width: 0;
+	text-align: center;
+	line-height: 1.1;
+}
+
+.sl.sl-circle .sl-texts {
+	text-align: left;
+}
+
+.sl-state {
+	font-size: calc(var(--sl-text-size) * 1cqh);
+	font-weight: bold;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sl-value,
+.sl-time {
+	font-size: max(11px, calc(var(--sl-text-size) * .4cqh));
+	opacity: .85;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.sl-value {
+	margin-top: 2px;
+}
+
+.sl.sl-circle .sl-texts > :first-child {
+	color: var(--sl-color);
+}
+
+.sl.sl-blink.sl-fill {
+	animation: sl-blink 1s step-start infinite;
+}
+
+.sl.sl-blink .sl-lamp {
+	animation: sl-blink 1s step-start infinite;
+}
+
+@keyframes sl-blink {
+	50% {
+		opacity: .35;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sl.sl-blink.sl-fill,
+	.sl.sl-blink .sl-lamp {
+		animation: none;
+	}
+}
