@@ -1,0 +1,33 @@
+{
+	"manifest_version": 2.0,
+	"id": "status_light",
+	"type": "widget",
+	"name": "Semáforo UP/DOWN",
+	"namespace": "StatusLight",
+	"version": "1.0.0",
+	"author": "luistorot001-svg",
+	"url": "https://github.com/luistorot001-svg/zabbix-widgets",
+	"description": "Indicador tipo semáforo para un ítem: verde si está arriba, rojo si está abajo. Colores, textos y tamaño configurables.",
+	"widget": {
+		"js_class": "CWidgetStatusLight",
+		"size": {
+			"width": 12,
+			"height": 3
+		},
+		"in": {
+			"itemid": {
+				"type": "_itemid",
+				"required": true
+			}
+		}
+	},
+	"actions": {
+		"widget.status_light.view": {
+			"class": "WidgetView"
+		}
+	},
+	"assets": {
+		"js": ["class.widget.js"],
+		"css": ["widget.css"]
+	}
+}
