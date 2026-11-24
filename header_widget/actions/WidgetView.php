@@ -17,8 +17,8 @@ class WidgetView extends CControllerDashboardWidgetView {
 				'align' => (int) $this->fields_values['align'],
 				'title_size' => (int) $this->fields_values['title_size'],
 				'title_bold' => (int) $this->fields_values['title_bold'] === 1,
-				'bg_color' => $this->fields_values['bg_color'],
-				'text_color' => $this->fields_values['text_color']
+				'bg_color' => (string) ($this->fields_values['bg_color'] ?? ''),
+				'text_color' => (string) ($this->fields_values['text_color'] ?? '')
 			],
 			'user' => [
 				'debug_mode' => $this->getDebugMode()
