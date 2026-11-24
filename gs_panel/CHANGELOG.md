@@ -4,6 +4,7 @@
 - Adaptado a Zabbix 7.0: `manifest_version` 2.0, `Zabbix\Core\CModule`, página con `CHtmlPage`
   y `disableCsrfValidation()` (reemplaza a `disableSIDValidation()`, que ya no existe en 7.0).
 - La consulta de hosts usa `selectHostGroups` (`selectGroups` está obsoleto en 7.0).
+- Se incluye el template `Grandstream IP Phone by HTTP` v1.7.2 en `template/`.
 - Primera versión pública.
 
 ## 1.2.0 (Zabbix 6.0)

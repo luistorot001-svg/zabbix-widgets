@@ -12,8 +12,9 @@ detalle al hacer clic (cuentas SIP, problemas activos, red y equipo). Se actuali
 ## Requisitos
 
 - Zabbix 7.0.
-- Hosts con un template que se llame **`Grandstream IP Phone by HTTP`** y que tenga estos ítems
-  (el nombre del template se cambia en `actions/PanelData.php`, constante `TEMPLATE`):
+- Hosts con el template **`Grandstream IP Phone by HTTP`**, incluido en [`template/`](template/)
+  (ver su README para importarlo). Si usas otro template, debe tener estos ítems; su nombre se
+  cambia en `actions/PanelData.php`, constante `TEMPLATE`:
 
 | Clave del ítem | Para qué la usa el panel |
 |---|---|
