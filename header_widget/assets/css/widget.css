@@ -1,0 +1,51 @@
+/* Widget de cabecera */
+.hw {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	height: 100%;
+	box-sizing: border-box;
+	padding: 8px 20px;
+	overflow: hidden;
+}
+
+.hw.hw-center {
+	justify-content: center;
+	text-align: center;
+}
+
+.hw.hw-right {
+	flex-direction: row-reverse;
+	text-align: right;
+}
+
+.hw-logo {
+	max-height: 100%;
+	max-width: 40%;
+	object-fit: contain;
+	flex: none;
+}
+
+.hw-texts {
+	min-width: 0;
+}
+
+.hw-title {
+	line-height: 1.15;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.hw-title.hw-bold {
+	font-weight: bold;
+}
+
+.hw-subtitle {
+	margin-top: 4px;
+	font-size: 14px;
+	opacity: .8;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}

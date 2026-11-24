@@ -3,8 +3,7 @@
 Widget de dashboard para **Zabbix 7.0** que muestra el HTML que escribas: títulos, avisos,
 enlaces, logotipos o cualquier bloque de texto con formato.
 
-Basado en [zabbix-widget-html](https://github.com/shrank/zabbix-widget-html) de shrank (CC0 1.0),
-adaptado a Zabbix 7.0 y revisado contra el código fuente de esa versión.
+Hecho para Zabbix 7.0 y revisado contra el código fuente de esa versión.
 
 ## Instalar
 
@@ -18,7 +17,7 @@ adaptado a Zabbix 7.0 y revisado contra el código fuente de esa versión.
 ## Usar
 
 En un dashboard: **Edit dashboard › Add widget › Type: HTML** y escribe el contenido en
-**HTML content**. Ejemplo:
+**Contenido HTML**. Opcionalmente elige un **Color de fondo** para todo el widget. Ejemplo:
 
 ```html
 <div style="text-align:center;padding:12px">
@@ -44,7 +43,8 @@ insertar HTML que verán todos los que lo abran. Úsalo en dashboards que solo e
 |---|---|
 | `manifest.json` | Datos del widget |
 | `Widget.php` | Clase del widget (nombre por defecto) |
-| `includes/WidgetForm.php` | Campo "HTML content" del formulario |
+| `includes/WidgetForm.php` | Campos "Contenido HTML" y "Color de fondo" |
 | `actions/WidgetView.php` | Pasa el contenido a la vista |
-| `views/widget.edit.php` | Formulario de edición |
+| `views/widget.edit.php`, `views/widget.edit.js.php` | Formulario de edición y selector de color |
 | `views/widget.view.php` | Muestra el contenido |
+| `assets/css/widget.css` | Hace que el contenido ocupe todo el widget, con scroll si no cabe |
