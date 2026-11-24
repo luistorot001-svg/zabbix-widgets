@@ -6,6 +6,7 @@ Módulos y widgets de frontend para **Zabbix 7.0 LTS**, libres para usar y adapt
 |---|---|---|
 | [`gs_panel`](gs_panel/) | Módulo (página) | Página **Monitoring › Teléfonos** con el estado de teléfonos IP Grandstream: disponible, DND, registro SIP y problemas. Incluye el template de Zabbix que lo alimenta |
 | [`html_widget`](html_widget/) | Widget de dashboard | Muestra contenido HTML propio dentro de un dashboard |
+| [`header_widget`](header_widget/) | Widget de dashboard | Cabecera con título, subtítulo y logotipo, sin escribir código |
 
 Cada carpeta tiene su propio README con requisitos, instalación y ajustes.
 
