@@ -14,7 +14,7 @@ Probado por su autor en GXP2130, GXP2135, GRP2613 y GXV3450. En GXP, el QoS RTP 
 
 1. En Zabbix: **Data collection › Templates › Import** y elige `grandstream_ip_phone_by_http.yaml`.
 2. Revisa las macros del template (abajo), sobre todo la comunidad SNMP y las contraseñas.
-3. Agrega a cada teléfono una interfaz **SNMP v2c** y una **Agent** o cualquiera con su IP, y enlázale el template.
+3. Crea cada teléfono como host con una interfaz **SNMP v2c** con su IP y enlázale el template.
 
 ## En el teléfono
 
