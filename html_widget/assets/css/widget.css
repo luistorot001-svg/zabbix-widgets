@@ -1,0 +1,6 @@
+/* Widget HTML: el contenido ocupa todo el widget y hace scroll si no cabe. */
+.htmlw {
+	height: 100%;
+	box-sizing: border-box;
+	overflow: auto;
+}

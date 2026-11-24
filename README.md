@@ -25,8 +25,7 @@ Hechos para Zabbix 7.0 (`manifest_version` 2.0). No funcionan en Zabbix 6.0. Otr
 
 ## Licencia
 
-MIT, ver [LICENSE](LICENSE). `html_widget` está basado en
-[zabbix-widget-html](https://github.com/shrank/zabbix-widget-html) de shrank, publicado bajo CC0 1.0.
+MIT, ver [LICENSE](LICENSE).
 
 ---
 

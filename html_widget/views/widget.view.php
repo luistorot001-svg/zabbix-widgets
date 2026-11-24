@@ -6,6 +6,14 @@
  * @var array $data
  */
 
+$box = (new CDiv())
+	->addClass('htmlw')
+	->addItem(new CObject($data['html']));
+
+if ($data['bg_color'] !== '') {
+	$box->addStyle('background-color: #'.$data['bg_color'].';');
+}
+
 (new CWidgetView($data))
-	->addItem(new CObject($data['content']))
+	->addItem($box)
 	->show();

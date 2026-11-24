@@ -10,7 +10,8 @@ class WidgetView extends CControllerDashboardWidgetView {
 	protected function doAction(): void {
 		$this->setResponse(new CControllerResponseData([
 			'name' => $this->getInput('name', $this->widget->getDefaultName()),
-			'content' => $this->fields_values['content'],
+			'html' => (string) $this->fields_values['content'],
+			'bg_color' => (string) ($this->fields_values['bg_color'] ?? ''),
 			'user' => [
 				'debug_mode' => $this->getDebugMode()
 			]
