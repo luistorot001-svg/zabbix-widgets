@@ -43,7 +43,7 @@
         var s = x.cuentas.map(function (c) { return c.servidor; }).filter(Boolean);
         return s.length ? [s[0] + (s.length > 1 && s.some(function (v) { return v !== s[0]; }) ? " +" : ""), "neutro", s[0]] : ["—", "neutro", "Sin dato"]; } },
     { id: "ext", nombre: "Extensiones", f: txt("gs.accounts.extensions") },
-    { id: "mac", nombre: "MAC", f: txt("gs.inv.mac") },
+    { id: "mac", nombre: "MAC", f: function (x) { var v = mac(x.p); return v ? [v, "neutro", v] : ["—", "neutro", "Sin dato"]; } },
     { id: "parte", nombre: "N.º de parte", f: txt("gs.inv.partnumber") },
     { id: "api", nombre: "API web", f: function (x) {
         var v = valor(x.p, "gs.cti.response"); if (v === null) return ["—", "neutro", "Sin dato"];
@@ -122,6 +122,9 @@
   }
 
   function valor(p, key) { var x = p.it[key]; return (x && x.c > 0) ? x.v : null; }
+  // Los GXV dejan sysName vacío: modelo y MAC caen al dato de la consulta web (gs.web.*).
+  function modelo(p) { return valor(p, "gs.inv.model") || valor(p, "gs.web.model"); }
+  function mac(p) { return valor(p, "gs.inv.mac") || valor(p, "gs.web.mac"); }
 
   function estado(p, ahora) {
     var cuentas = Object.keys(p.cuentas).map(function (k) { return p.cuentas[k]; }).filter(function (c) { return c.sip; }).sort(function (a, b) { return a.n - b.n; });
@@ -138,7 +141,7 @@
     var reloj = 0; ["icmpping[,3]", "gs.snmp.uptime"].forEach(function (k) { var i = p.it[k]; if (i && i.c > reloj) reloj = i.c; });
     x.reloj = reloj; x.edad = reloj ? ahora - reloj : null;
     x.v.lect = p.mant ? "En mantenimiento" : !reloj ? "Sin dato" : x.edad > VIEJA_S ? "Vieja" : "En vivo";
-    x.v.modelo = valor(p, "gs.inv.model") || "Sin dato";
+    x.v.modelo = modelo(p) || "Sin dato";
     // gravedad para ordenar: caído, luego peor problema, luego sin registro
     x.rango = (x.v.disp === "No" ? 100 : 0) + (x.peor + 1) * 10 + (x.v.reg === "No" ? 5 : 0);
     x.ext = cuentas.length ? cuentas[0].sip : "";
@@ -218,9 +221,9 @@
     pon(r["d-loss"], loss === null ? "" : Number(loss).toFixed(0) + " %");
     pon(r["d-uptime"], up === null ? "" : duracion(up));
     pon(r["d-lectura"], p.mant ? "En mantenimiento en Zabbix" : x.reloj ? fecha(x.reloj) + " (" + hace(x.edad) + ")" : "Sin lecturas");
-    pon(r["d-modelo"], valor(p, "gs.inv.model"));
+    pon(r["d-modelo"], modelo(p));
     pon(r["d-firmware"], valor(p, "gs.inv.firmware"));
-    pon(r["d-mac"], valor(p, "gs.inv.mac"));
+    pon(r["d-mac"], mac(p));
     pon(r["d-ip"], p.ip);
     pon(r["d-parte"], valor(p, "gs.inv.partnumber"));
   }
