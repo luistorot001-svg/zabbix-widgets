@@ -4,7 +4,7 @@
 	"type": "module",
 	"name": "Panel de teléfonos Grandstream",
 	"namespace": "GsPanel",
-	"version": "2.0.0",
+	"version": "2.0.1",
 	"author": "luistorot001-svg",
 	"url": "https://github.com/luistorot001-svg/zabbix-widgets",
 	"description": "Estado de teléfonos IP Grandstream: disponible, DND, registro SIP y problemas. Solo lectura.",
