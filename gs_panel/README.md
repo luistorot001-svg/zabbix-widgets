@@ -28,6 +28,7 @@ detalle al hacer clic (cuentas SIP, problemas activos, red y equipo). Se actuali
 | `gs.snmp.uptime` | Encendido |
 | `gs.cti.response` | API web |
 | `gs.inv.model`, `gs.inv.firmware`, `gs.inv.mac`, `gs.inv.partnumber` | Datos del equipo |
+| `gs.web.model`, `gs.web.mac` (opcionales) | Respaldo de modelo y MAC cuando `sysName` viene vacío (GXV34xx) |
 
 Si falta alguno, esa columna o dato aparece como "Sin dato"; el resto funciona.
 
