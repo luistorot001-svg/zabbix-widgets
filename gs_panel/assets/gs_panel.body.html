@@ -3,9 +3,6 @@
   <div class="encabezado">
     <div class="franja" aria-hidden="true"><i></i><b></b></div>
     <div class="cabecera">
-      <div>
-        <p class="sub" id="resumen">Sin lecturas todavía</p>
-      </div>
       <div class="puente" aria-live="polite">
         <div class="puente-fila">
           <span class="pildora" id="puente-estado" data-tono="neutro">Leyendo</span>
@@ -21,37 +18,67 @@
 
   <p class="aviso-pagina" id="aviso" role="status" hidden></p>
 
+  <!-- 2.1.0: tarjetas de resumen; al hacer clic filtran la lista y la cuadrícula -->
+  <div class="tarjetas" id="tarjetas" role="group" aria-label="Resumen de teléfonos">
+    <button type="button" class="tarjeta" data-t="todos" data-tono="neutro"><span class="t-num" data-n>—</span><span class="t-rot">Teléfonos</span></button>
+    <button type="button" class="tarjeta" data-t="disp" data-tono="ok"><span class="t-num" data-n>—</span><span class="t-rot">Disponibles</span></button>
+    <button type="button" class="tarjeta" data-t="caidos" data-tono="critico"><span class="t-num" data-n>—</span><span class="t-rot">Sin respuesta</span></button>
+    <button type="button" class="tarjeta" data-t="noreg" data-tono="critico"><span class="t-num" data-n>—</span><span class="t-rot">Sin registro</span></button>
+    <button type="button" class="tarjeta" data-t="dnd" data-tono="aviso"><span class="t-num" data-n>—</span><span class="t-rot">Con DND</span></button>
+    <button type="button" class="tarjeta" data-t="prob" data-tono="aviso"><span class="t-num" data-n>—</span><span class="t-rot">Con problemas</span></button>
+    <button type="button" class="tarjeta" data-t="mant" data-tono="neutro" hidden><span class="t-num" data-n>—</span><span class="t-rot">En mantenimiento</span></button>
+  </div>
+
   <div class="zona" id="zona">
     <div class="barra">
       <span class="cuenta" id="cuenta">—</span>
-      <button type="button" class="boton-sec" id="limpiar" hidden>Limpiar filtros</button>
+      <div class="barra-der">
+        <button type="button" class="boton-sec" id="limpiar" hidden>Limpiar filtros</button>
+        <div class="vistas" role="group" aria-label="Vista">
+          <button type="button" class="vista-btn" data-vista="lista" aria-pressed="true">Lista</button>
+          <button type="button" class="vista-btn" data-vista="cuadricula" aria-pressed="false">Cuadrícula</button>
+        </div>
+      </div>
     </div>
-    <div class="tabla">
+
+    <div class="tabla" id="vista-lista">
       <div class="cols" role="group" aria-label="Filtros de la lista">
-        <label class="filtro filtro-ext"><span>Teléfono</span><input type="search" id="f-buscar" placeholder="Extensión o nombre" autocomplete="off"></label>
+        <label class="filtro"><span>Extensión</span><input type="search" id="f-ext" placeholder="Ej. 10" autocomplete="off" inputmode="numeric"></label>
+        <label class="filtro"><span>Teléfono</span><input type="search" id="f-buscar" placeholder="Nombre" autocomplete="off"></label>
         <label class="filtro"><span>Modelo</span><select id="f-modelo"></select></label>
-        <label class="filtro"><span>IP</span><input type="search" id="f-ip" placeholder="Ej. 192.168.1." autocomplete="off" inputmode="decimal"></label>
         <label class="filtro"><span>Disponible</span><select id="f-disp"></select></label>
         <label class="filtro"><span>DND</span><select id="f-dnd"></select></label>
         <label class="filtro"><span>Registrado</span><select id="f-reg"></select></label>
-        <div class="filtro"><select id="f-varcol" class="sel-col" aria-label="Dato que muestra esta columna"></select><select id="f-var" aria-label="Filtro de la columna"></select></div>
+        <div class="filtro"><select id="f-varcol" class="sel-col" aria-label="Dato que muestra esta columna"></select><select id="f-var" aria-label="Filtro de la columna"></select><input type="search" id="f-vartxt" aria-label="Filtro de la columna" autocomplete="off" hidden></div>
         <span></span>
       </div>
       <ul class="lista" id="lista"></ul>
-      <p class="vacio-lista" id="vacio" hidden>Ningún teléfono cumple estos filtros.</p>
     </div>
+
+    <div class="cuadricula-caja" id="vista-cuadricula" hidden>
+      <ul class="leyenda" aria-label="Qué significa cada color">
+        <li data-tono="ok">Disponible y registrado</li>
+        <li data-tono="aviso">Responde, con problema o sin registro</li>
+        <li data-tono="critico">Sin respuesta</li>
+        <li data-tono="neutro">Sin dato o en mantenimiento</li>
+      </ul>
+      <ul class="cuadricula" id="cuadricula"></ul>
+    </div>
+
+    <p class="vacio-lista" id="vacio" hidden>Ningún teléfono cumple estos filtros.</p>
   </div>
 </div>
 
 <template id="tpl-fila">
   <li class="fila">
     <button type="button" class="fila-cab" aria-expanded="false">
+      <span class="celda celda-ext"><span class="celda-rot">Extensión</span><span class="ext-linea"><span class="ext-num" data-r="ext">—</span><span class="mas" data-r="mas" hidden></span></span></span>
       <span class="ext">
-        <span class="ext-linea"><span class="ext-num" data-r="ext">—</span><span class="ext-nombre" data-r="nombre"></span><span class="mas" data-r="mas" hidden></span></span>
+        <span class="celda-rot">Teléfono</span>
+        <span class="ext-nombre" data-r="nombre"></span>
         <span class="marca" data-r="marca" hidden></span>
       </span>
       <span class="celda"><span class="celda-rot">Modelo</span><span class="dato" data-r="c-modelo">—</span></span>
-      <span class="celda"><span class="celda-rot">IP</span><span class="dato" data-r="c-ip">—</span></span>
       <span class="celda"><span class="celda-rot">Disponible</span><span class="pildora" data-r="c-disp" data-pausa>—</span></span>
       <span class="celda"><span class="celda-rot">DND</span><span class="pildora" data-r="c-dnd" data-vivo>—</span></span>
       <span class="celda"><span class="celda-rot">Registrado</span><span class="pildora" data-r="c-reg" data-vivo>—</span></span>
