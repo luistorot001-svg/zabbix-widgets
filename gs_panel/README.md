@@ -15,6 +15,8 @@ de los teléfonos IP Grandstream:
   mantenimiento.
 - Filtro por grupo de hosts y actualización automática (de 30 s a 10 min).
 - Se adapta al tema de cada usuario (Blue, Dark y los dos de alto contraste).
+- Sigue el idioma de cada usuario: español si lo tiene en español, inglés en cualquier otro. Los
+  nombres de hosts, cuentas y problemas se ven tal como están en Zabbix.
 
 - **Solo lectura.** Usa la API interna de Zabbix con los permisos del usuario que lo mira:
   cada usuario ve solo los hosts de sus grupos.

@@ -16,6 +16,6 @@ $html =
 	'<script>'.file_get_contents($assets.'gs_panel.js').'</script>';
 
 (new CHtmlPage())
-	->setTitle('Teléfonos')
+	->setTitle(Modules\GsPanel\Module::titulo())
 	->addItem(new CObject($html))
 	->show();
