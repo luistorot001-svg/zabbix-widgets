@@ -1,4 +1,4 @@
-/* Panel de teléfonos Grandstream · lógica del panel (módulo Zabbix 6.0). Solo lectura. */
+/* Panel de teléfonos Grandstream · lógica del panel (módulo Zabbix 7.0). Solo lectura. */
 (function () {
   // Los datos vienen de la acción gs.panel.data del módulo (API interna, permisos del usuario que mira).
   var DATOS = "zabbix.php?action=gs.panel.data";
@@ -37,6 +37,7 @@
         var v = valor(x.p, "gs.snmp.uptime"); if (v === null) return ["—", "neutro", "Sin dato"];
         var n = Number(v); return [duracion(n), n < 600 ? "aviso" : "ok", n < 600 ? "Menos de 10 min" : n < 86400 ? "Menos de 1 día" : "1 día o más"]; },
       orden: ["Menos de 10 min", "Menos de 1 día", "1 día o más", "Sin dato"] },
+    { id: "ip", nombre: "IP", texto: "Ej. 192.168.1.", f: function (x) { return x.p.ip ? [x.p.ip, "neutro", x.p.ip] : ["—", "neutro", "Sin dato"]; } },
     { id: "fw", nombre: "Firmware", f: txt("gs.inv.firmware") },
     { id: "sip", nombre: "Servidor SIP", f: function (x) {
         var s = x.cuentas.map(function (c) { return c.servidor; }).filter(Boolean);
@@ -53,7 +54,10 @@
   try { var gv = localStorage.getItem("gs_panel_columna"); VARS.forEach(function (o) { if (o.id === gv) VAR = o; }); } catch (e) {}
   var GRUPO = "";
   try { GRUPO = localStorage.getItem("gs_panel_grupo") || ""; } catch (e) {}
-  var VACIO = { texto: "", ip: "", modelo: "", disp: "", dnd: "", reg: "", var: "" };
+  var VISTA = "lista";
+  try { if (localStorage.getItem("gs_panel_vista") === "cuadricula") VISTA = "cuadricula"; } catch (e) {}
+  // Filtros: ext y texto son cajas de búsqueda; rapido lo ponen las tarjetas de resumen (2.1.0)
+  var VACIO = { ext: "", texto: "", modelo: "", disp: "", dnd: "", reg: "", var: "", rapido: "" };
   var filtro = Object.assign({}, VACIO);
   var filas = {}, timer = null, ultima = 0, abiertos = {};
 
@@ -138,7 +142,10 @@
     // gravedad para ordenar: caído, luego peor problema, luego sin registro
     x.rango = (x.v.disp === "No" ? 100 : 0) + (x.peor + 1) * 10 + (x.v.reg === "No" ? 5 : 0);
     x.ext = cuentas.length ? cuentas[0].sip : "";
-    x.busca = plano([p.nombre, p.ip, valor(p, "gs.inv.model"), valor(p, "gs.inv.mac")].concat(cuentas.map(function (c) { return c.sip + " " + c.nombre; })).join(" "));
+    x.busca = plano([p.nombre, p.ip].concat(cuentas.map(function (c) { return c.nombre; })).join(" "));
+    x.exts = cuentas.map(function (c) { return String(c.sip); });
+    // Color de la casilla en la cuadrícula
+    x.tono = p.mant || x.v.disp === "Sin dato" ? "neutro" : x.v.disp === "No" ? "critico" : (x.v.reg === "No" || x.peor >= 2) ? "aviso" : x.v.reg === "Sí" ? "ok" : "neutro";
     return x;
   }
 
@@ -169,10 +176,10 @@
   function pintarFila(f, x) {
     var r = f.r, p = x.p;
     pon(r.ext, x.ext || "—");
+    if (r.ext.title !== x.exts.join(", ")) r.ext.title = x.exts.join(", ");
     pon(r.nombre, p.nombre);
     r.mas.hidden = x.cuentas.length < 2; pon(r.mas, "+" + (x.cuentas.length - 1));
     pon(r["c-modelo"], x.v.modelo === "Sin dato" ? "" : x.v.modelo);
-    pon(r["c-ip"], p.ip);
     pildora(r["c-disp"], x.v.disp, x.v.disp === "Sí" ? "ok" : x.v.disp === "No" ? "critico" : "neutro");
     pildora(r["c-dnd"], x.v.dnd, x.v.dnd === "Activo" ? "aviso" : x.v.dnd === "No" ? "ok" : "neutro");
     var regTxt = x.v.reg === "No" ? "No · " + x.sinReg.length + " de " + x.cuentas.length : x.v.reg;
@@ -185,7 +192,7 @@
     var lect = marca || "En vivo";
     f.nodo.classList.toggle("vieja", x.v.lect === "Vieja" || x.v.disp === "No");
     f.nodo.classList.toggle("pausada", p.mant);
-    f.cab.setAttribute("aria-label", p.nombre + ". Disponible: " + x.v.disp + ". DND: " + x.v.dnd + ". Registrado: " + regTxt + ". " + VAR.nombre + ": " + x.var[0] + ". Lectura: " + lect);
+    f.cab.setAttribute("aria-label", (x.ext ? "Extensión " + x.ext + ", " : "") + p.nombre + ". Disponible: " + x.v.disp + ". DND: " + x.v.dnd + ". Registrado: " + regTxt + ". " + VAR.nombre + ": " + x.var[0] + ". Lectura: " + lect);
 
     lista(r.cuentas, x.cuentas.map(function (c) {
       var li = el("li");
@@ -221,11 +228,89 @@
   function enGrupo(x) { return !GRUPO || x.p.grupos.indexOf(GRUPO) >= 0; }
   function pasa(x) {
     if (!enGrupo(x)) return false;
+    if (filtro.ext) { var e = filtro.ext.trim(); if (e && !x.exts.some(function (s) { return s.indexOf(e) >= 0; })) return false; }
     if (filtro.texto && x.busca.indexOf(plano(filtro.texto)) < 0) return false;
-    if (filtro.ip && String(x.p.ip || "").indexOf(filtro.ip.trim()) !== 0) return false;
-    for (var k in COLS) { if (filtro[k] && x.v[k] !== filtro[k]) return false; }
+    for (var k in COLS) {
+      if (!filtro[k]) continue;
+      if (k === "var" && VAR.texto) { if (String(x.var[2]).indexOf(filtro.var.trim()) !== 0) return false; }
+      else if (x.v[k] !== filtro[k]) return false;
+    }
+    if (filtro.rapido && !RAPIDO[filtro.rapido](x)) return false;
     return true;
   }
+
+  // Tarjetas de resumen (2.1.0): qué cuenta cada una y, al hacer clic, qué filtra
+  var RAPIDO = {
+    todos: function () { return true; },
+    disp: function (x) { return x.v.disp === "Sí"; },
+    caidos: function (x) { return x.v.disp === "No"; },
+    noreg: function (x) { return x.v.reg === "No"; },
+    dnd: function (x) { return x.v.dnd === "Activo"; },
+    prob: function (x) { return x.peor >= 0; },
+    mant: function (x) { return x.p.mant; }
+  };
+  var tarjetas = Array.prototype.slice.call(document.querySelectorAll("#tarjetas .tarjeta"));
+
+  function pintarTarjetas(docs) {
+    tarjetas.forEach(function (b) {
+      var t = b.getAttribute("data-t"), n = docs.filter(RAPIDO[t]).length;
+      pon(b.querySelector("[data-n]"), docs.length ? n : "—");
+      if (t !== "todos" && t !== "disp") { if (n) b.removeAttribute("data-cero"); else b.setAttribute("data-cero", ""); }
+      if (t === "mant") b.hidden = !n && filtro.rapido !== "mant";
+      b.setAttribute("aria-pressed", (t === "todos" ? !hayFiltro() : filtro.rapido === t) ? "true" : "false");
+    });
+  }
+
+  function hayFiltro() { return Object.keys(VACIO).some(function (k) { return filtro[k]; }); }
+
+  // Cuadrícula (2.1.0): una casilla por teléfono con su extensión, ordenada por extensión
+  var casillas = {};
+  function pintarCuadricula(docs) {
+    var ul = $("cuadricula"), vistos = {};
+    docs.slice().sort(function (a, b) { return String(a.ext || "~" + a.p.nombre).localeCompare(String(b.ext || "~" + b.p.nombre), "es", { numeric: true }); })
+      .forEach(function (x) {
+        vistos[x.id] = 1;
+        var c = casillas[x.id];
+        if (!c) {
+          c = casillas[x.id] = { li: el("li"), b: el("button", "casilla") };
+          c.b.type = "button";
+          c.li.appendChild(c.b);
+          c.b.addEventListener("click", function () { irAFila(x.id); });
+        }
+        var t = x.ext || x.p.nombre;
+        pon(c.b, t);
+        c.b.classList.toggle("largo", String(t).length > 6);
+        if (c.b.getAttribute("data-tono") !== x.tono) c.b.setAttribute("data-tono", x.tono);
+        var estado = x.p.mant ? "En mantenimiento" : x.v.disp === "No" ? "Sin respuesta" : x.v.disp === "Sin dato" ? "Sin dato" :
+          x.v.reg === "No" ? "Sin registro SIP" : x.peor >= 2 ? "Con problema: " + SEV[x.peor] : "Disponible";
+        var tip = (x.exts.length ? x.exts.join(", ") + " · " : "") + x.p.nombre + " · " + estado;
+        if (c.b.title !== tip) { c.b.title = tip; c.b.setAttribute("aria-label", tip); }
+        c.li.hidden = !pasa(x);
+        ul.appendChild(c.li);
+      });
+    Object.keys(casillas).forEach(function (id) { if (!vistos[id]) { casillas[id].li.remove(); delete casillas[id]; } });
+  }
+
+  // Clic en una casilla: pasa a la lista con ese teléfono abierto
+  function irAFila(id) {
+    abiertos[id] = 1;
+    var f = filas[id];
+    if (f) { f.cab.setAttribute("aria-expanded", "true"); f.det.hidden = false; }
+    ponerVista("lista");
+    if (f && f.nodo.hidden) { filtro = Object.assign({}, VACIO); limpiarCajas(); pintarTodo(ultimos); }
+    if (f) { f.nodo.scrollIntoView({ block: "center" }); f.cab.focus({ preventScroll: true }); }
+  }
+
+  function ponerVista(v) {
+    VISTA = v;
+    try { localStorage.setItem("gs_panel_vista", v); } catch (e) {}
+    $("vista-lista").hidden = v !== "lista";
+    $("vista-cuadricula").hidden = v !== "cuadricula";
+    Array.prototype.forEach.call(document.querySelectorAll(".gsp .vista-btn"), function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-vista") === v ? "true" : "false"); });
+    pintarTodo(ultimos);
+  }
+
+  function limpiarCajas() { $("f-ext").value = ""; $("f-buscar").value = ""; $("f-vartxt").value = ""; }
 
   var ultimos = [];
   function pintarTodo(docs) {
@@ -242,18 +327,13 @@
       ul.appendChild(f.nodo);
     });
     Object.keys(filas).forEach(function (id) { if (!vistos[id]) { filas[id].nodo.remove(); delete filas[id]; } });
+    if (VISTA === "cuadricula") pintarCuadricula(docs);
     $("vacio").hidden = visibles > 0 || !docs.length;
-    var hayFiltro = !!filtro.texto || !!filtro.ip || Object.keys(COLS).some(function (k) { return filtro[k]; });
-    $("limpiar").hidden = !hayFiltro;
-    var enG = docs.filter(enGrupo).length;
-    pon($("cuenta"), hayFiltro ? visibles + " de " + enG + " teléfonos" : enG + (enG === 1 ? " teléfono" : " teléfonos"));
-    var total = docs.length;
-    docs = docs.filter(enGrupo);
-    var n = function (f) { return docs.filter(f).length; };
-    var caidos = n(function (x) { return x.v.disp === "No"; }), sinReg = n(function (x) { return x.v.reg === "No"; });
-    var dnd = n(function (x) { return x.v.dnd === "Activo"; }), conProb = n(function (x) { return x.peor >= 0; }), man = n(function (x) { return x.p.mant; });
-    pon($("resumen"), docs.length ? docs.length + " teléfonos · " + (docs.length - caidos) + " disponibles" + (caidos ? " · " + caidos + " sin respuesta" : "") +
-      (sinReg ? " · " + sinReg + " con extensión sin registro" : "") + " · " + dnd + " con DND · " + conProb + " con problemas" + (man ? " · " + man + " en mantenimiento" : "") : "Sin teléfonos para mostrar");
+    var hay = hayFiltro();
+    $("limpiar").hidden = !hay;
+    var enG = docs.filter(enGrupo);
+    pon($("cuenta"), hay ? visibles + " de " + enG.length + " teléfonos" : enG.length + (enG.length === 1 ? " teléfono" : " teléfonos"));
+    pintarTarjetas(enG);
     actualizarOpciones();
   }
 
@@ -290,21 +370,38 @@
       s.value = filtro[k];
       s.classList.toggle("activo", !!filtro[k]);
     });
+    $("f-ext").classList.toggle("activo", !!filtro.ext);
     $("f-buscar").classList.toggle("activo", !!filtro.texto);
-    $("f-ip").classList.toggle("activo", !!filtro.ip);
+    // Columna variable de texto (IP): caja de búsqueda en lugar de menú
+    $("f-var").hidden = !!VAR.texto;
+    $("f-vartxt").hidden = !VAR.texto;
+    if (VAR.texto) { $("f-vartxt").placeholder = VAR.texto; $("f-vartxt").classList.toggle("activo", !!filtro.var); }
   }
 
   Object.keys(COLS).forEach(function (k) {
     $(COLS[k].sel).addEventListener("change", function (e) { filtro[k] = e.target.value; pintarTodo(ultimos); });
   });
+  $("f-ext").addEventListener("input", function (e) { filtro.ext = e.target.value; pintarTodo(ultimos); });
   $("f-buscar").addEventListener("input", function (e) { filtro.texto = e.target.value; pintarTodo(ultimos); });
-  $("f-ip").addEventListener("input", function (e) { filtro.ip = e.target.value; pintarTodo(ultimos); });
-  $("limpiar").addEventListener("click", function () { filtro = Object.assign({}, VACIO); $("f-buscar").value = ""; $("f-ip").value = ""; pintarTodo(ultimos); });
+  $("f-vartxt").addEventListener("input", function (e) { filtro.var = e.target.value; pintarTodo(ultimos); });
+  $("limpiar").addEventListener("click", function () { filtro = Object.assign({}, VACIO); limpiarCajas(); pintarTodo(ultimos); });
+  tarjetas.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = b.getAttribute("data-t");
+      if (t === "todos") { filtro = Object.assign({}, VACIO); limpiarCajas(); }
+      else filtro.rapido = filtro.rapido === t ? "" : t;
+      pintarTodo(ultimos);
+    });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".gsp .vista-btn"), function (b) {
+    b.addEventListener("click", function () { ponerVista(b.getAttribute("data-vista")); });
+  });
   VARS.forEach(function (o) { var op = document.createElement("option"); op.value = o.id; op.textContent = o.nombre; $("f-varcol").appendChild(op); });
   $("f-varcol").value = VAR.id;
   $("f-varcol").addEventListener("change", function (e) {
     VARS.forEach(function (o) { if (o.id === e.target.value) VAR = o; });
     filtro.var = "";
+    $("f-vartxt").value = "";
     try { localStorage.setItem("gs_panel_columna", VAR.id); } catch (er) {}
     pintarTodo(ultimos);
   });
@@ -337,5 +434,6 @@
   }
 
   puente("Leyendo", "neutro", "Abriendo las últimas lecturas…");
+  ponerVista(VISTA);
   ciclo();
 })();

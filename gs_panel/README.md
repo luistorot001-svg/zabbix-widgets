@@ -1,9 +1,20 @@
 # Panel de teléfonos Grandstream
 
-Módulo de frontend para **Zabbix 7.0** que agrega la página **Monitoring › Teléfonos**: una fila por
-teléfono IP Grandstream con Disponible, DND, Registrado y una columna a elegir (problemas, latencia,
-pérdida, firmware, servidor SIP, etc.). Tiene filtros por columna, filtro por grupo de hosts y un
-detalle al hacer clic (cuentas SIP, problemas activos, red y equipo). Se actualiza solo (de 30 s a 10 min).
+Módulo de frontend para **Zabbix 7.0** que agrega la página **Monitoring › Teléfonos** con el estado
+de los teléfonos IP Grandstream:
+
+- **Tarjetas de resumen**: teléfonos, disponibles, sin respuesta, sin registro, con DND, con
+  problemas y en mantenimiento. Al hacer clic en una, se filtra la vista.
+- **Vista Lista**: una fila por teléfono con Extensión, Teléfono, Modelo, Disponible, DND,
+  Registrado y una columna a elegir (problemas, IP, latencia, pérdida, firmware, servidor SIP,
+  etc.). Cada columna tiene su filtro, y al hacer clic en una fila se abre el detalle (cuentas SIP,
+  problemas activos, red y equipo).
+- **Vista Cuadrícula**: una casilla por teléfono con su extensión y un color, pensada para una
+  pantalla de monitoreo. Verde = disponible y registrado; ámbar = responde pero tiene un problema
+  (Aviso o más grave) o una cuenta sin registro; rojo = no responde a ping; gris = sin dato o en
+  mantenimiento.
+- Filtro por grupo de hosts y actualización automática (de 30 s a 10 min).
+- Se adapta al tema de cada usuario (Blue, Dark y los dos de alto contraste).
 
 - **Solo lectura.** Usa la API interna de Zabbix con los permisos del usuario que lo mira:
   cada usuario ve solo los hosts de sus grupos.
@@ -41,6 +52,16 @@ Si falta alguno, esa columna o dato aparece como "Sin dato"; el resto funciona.
 2. En Zabbix: **Administration › General › Modules › Scan directory**.
 3. Busca "Panel de teléfonos Grandstream", márcalo y pulsa **Enable**.
 4. Abre **Monitoring › Teléfonos**.
+
+## Actualizar desde una versión anterior
+
+1. Borra la carpeta vieja y copia la nueva (así no quedan archivos que ya no se usan):
+   ```
+   rm -rf /usr/share/zabbix/modules/gs_panel
+   cp -r gs_panel /usr/share/zabbix/modules/
+   ```
+2. En Zabbix: **Administration › General › Modules › Scan directory**. El módulo sigue habilitado.
+3. Recarga **Monitoring › Teléfonos** con Ctrl+F5.
 
 ## Ajustes
 
