@@ -8,6 +8,7 @@ Módulos y widgets de frontend para **Zabbix 7.0 LTS**, libres para usar y adapt
 | [`html_widget`](html_widget/) | Widget de dashboard | Muestra contenido HTML propio dentro de un dashboard |
 | [`header_widget`](header_widget/) | Widget de dashboard | Cabecera con título, subtítulo y logotipo, sin escribir código |
 | [`status_light`](status_light/) | Widget de dashboard | Semáforo UP/DOWN para cualquier ítem: colores, textos y tamaño configurables |
+| [`graphs_menu`](graphs_menu/) | Módulo (menú) | Agrega **Monitoring › Graphs** debajo de Hosts, para abrir las gráficas a un clic |
 
 Cada carpeta tiene su propio README con requisitos, instalación y ajustes.
 
