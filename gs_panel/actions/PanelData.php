@@ -10,6 +10,7 @@ use API;
 use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
+use CWebUser;
 
 class PanelData extends CController {
 
@@ -44,7 +45,9 @@ class PanelData extends CController {
 		]);
 
 		if (!$templates) {
-			$out['error'] = 'Tu usuario no ve el template "'.self::TEMPLATE.'" o no existe.';
+			$out['error'] = self::es()
+				? 'Tu usuario no ve el template "'.self::TEMPLATE.'" o no existe.'
+				: 'Your user cannot see the template "'.self::TEMPLATE.'" or it does not exist.';
 			return $this->responder($out);
 		}
 
@@ -63,7 +66,9 @@ class PanelData extends CController {
 			]);
 
 			if (!$groups) {
-				$out['error'] = 'No existe el grupo "'.self::GRUPO.'" o tu usuario no lo ve.';
+				$out['error'] = self::es()
+					? 'No existe el grupo "'.self::GRUPO.'" o tu usuario no lo ve.'
+					: 'The host group "'.self::GRUPO.'" does not exist or your user cannot see it.';
 				return $this->responder($out);
 			}
 
@@ -95,6 +100,10 @@ class PanelData extends CController {
 		}
 
 		return $this->responder($out);
+	}
+
+	private static function es(): bool {
+		return CWebUser::getLang() === 'es';
 	}
 
 	private function responder(array $out) {

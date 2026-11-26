@@ -15,6 +15,8 @@ de los teléfonos IP Grandstream:
   mantenimiento.
 - Filtro por grupo de hosts y actualización automática (de 30 s a 10 min).
 - Se adapta al tema de cada usuario (Blue, Dark y los dos de alto contraste).
+- Sigue el idioma de cada usuario: español si lo tiene en español, inglés en cualquier otro. Los
+  nombres de hosts, cuentas y problemas se ven tal como están en Zabbix.
 
 - **Solo lectura.** Usa la API interna de Zabbix con los permisos del usuario que lo mira:
   cada usuario ve solo los hosts de sus grupos.
@@ -36,7 +38,7 @@ de los teléfonos IP Grandstream:
 | `gs.account.reg[N]` | Registro de la cuenta SIP N (1 = registrada). La extensión va entre paréntesis en el nombre del ítem |
 | `gs.account.server[N]` | Servidor SIP de la cuenta N |
 | `gs.accounts.extensions` | Extensiones |
-| `gs.snmp.uptime` | Encendido |
+| `gs.snmp.uptime` | Solo para saber cuándo fue la última lectura (es el uptime del agente SNMP, no del teléfono, así que no se muestra) |
 | `gs.cti.response` | API web |
 | `gs.inv.model`, `gs.inv.firmware`, `gs.inv.mac`, `gs.inv.partnumber` | Datos del equipo |
 | `gs.web.model`, `gs.web.mac` (opcionales) | Respaldo de modelo y MAC cuando `sysName` viene vacío (GXV34xx) |

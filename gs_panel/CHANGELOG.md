@@ -1,5 +1,18 @@
 # Cambios
 
+## 2.2.0
+- El panel sigue el idioma de cada usuario de Zabbix: en español si lo tiene en español y en
+  inglés con cualquier otro idioma. Aplica al menú (Teléfonos / Phones), al título de la página,
+  a todos los textos y fechas del panel y a los mensajes de error. El idioma se lee de
+  `CWebUser::getLang()` en PHP y del atributo `lang` de `<html>` en el navegador, que Zabbix 7.0
+  llena con ese mismo valor. Los nombres de severidad en inglés son los de Zabbix (Not classified,
+  Information, Warning, Average, High, Disaster).
+- Los nombres de hosts, cuentas, grupos y problemas se muestran tal como están en Zabbix.
+- Se quita "Encendido" de la columna variable y del detalle. El dato venía de `gs.snmp.uptime`,
+  que es el tiempo desde que arrancó el agente SNMP, no el teléfono. En GRP2613 y GXV34xx ese
+  agente se reinicia solo, y un teléfono con días encendido aparecía con minutos. El ítem se
+  sigue usando solo para la hora de la última lectura.
+
 ## 2.1.0
 - Colores según el tema de cada usuario: Blue, Dark, High-contrast light y High-contrast dark.
   Se leen del atributo `theme` que Zabbix 7.0 pone en la etiqueta `<html>`, y los colores base

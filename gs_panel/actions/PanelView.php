@@ -8,6 +8,7 @@ namespace Modules\GsPanel\Actions;
 use CController;
 use CControllerResponseData;
 use CControllerResponseFatal;
+use Modules\GsPanel\Module;
 
 class PanelView extends CController {
 
@@ -33,7 +34,7 @@ class PanelView extends CController {
 		$response = new CControllerResponseData([
 			'module_dir' => dirname(__DIR__)
 		]);
-		$response->setTitle('Teléfonos');
+		$response->setTitle(Module::titulo());
 		$this->setResponse($response);
 	}
 }
