@@ -36,7 +36,7 @@ de los teléfonos IP Grandstream:
 | `gs.account.reg[N]` | Registro de la cuenta SIP N (1 = registrada). La extensión va entre paréntesis en el nombre del ítem |
 | `gs.account.server[N]` | Servidor SIP de la cuenta N |
 | `gs.accounts.extensions` | Extensiones |
-| `gs.snmp.uptime` | Encendido |
+| `gs.snmp.uptime` | Solo para saber cuándo fue la última lectura (es el uptime del agente SNMP, no del teléfono, así que no se muestra) |
 | `gs.cti.response` | API web |
 | `gs.inv.model`, `gs.inv.firmware`, `gs.inv.mac`, `gs.inv.partnumber` | Datos del equipo |
 | `gs.web.model`, `gs.web.mac` (opcionales) | Respaldo de modelo y MAC cuando `sysName` viene vacío (GXV34xx) |

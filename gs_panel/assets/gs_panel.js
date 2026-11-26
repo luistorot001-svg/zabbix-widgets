@@ -33,10 +33,6 @@
         var v = valor(x.p, "icmppingloss[,10]"); if (v === null) return ["—", "neutro", "Sin dato"];
         var n = Number(v); return [n.toFixed(0) + " %", n >= 20 ? "critico" : n > 0 ? "aviso" : "ok", n >= 20 ? "20 % o más" : n > 0 ? "1 a 19 %" : "0 %"]; },
       orden: ["0 %", "1 a 19 %", "20 % o más", "Sin dato"] },
-    { id: "uptime", nombre: "Encendido", f: function (x) {
-        var v = valor(x.p, "gs.snmp.uptime"); if (v === null) return ["—", "neutro", "Sin dato"];
-        var n = Number(v); return [duracion(n), n < 600 ? "aviso" : "ok", n < 600 ? "Menos de 10 min" : n < 86400 ? "Menos de 1 día" : "1 día o más"]; },
-      orden: ["Menos de 10 min", "Menos de 1 día", "1 día o más", "Sin dato"] },
     { id: "ip", nombre: "IP", texto: "Ej. 192.168.1.", f: function (x) { return x.p.ip ? [x.p.ip, "neutro", x.p.ip] : ["—", "neutro", "Sin dato"]; } },
     { id: "fw", nombre: "Firmware", f: txt("gs.inv.firmware") },
     { id: "sip", nombre: "Servidor SIP", f: function (x) {
@@ -72,11 +68,6 @@
     if (seg < 3600) return "hace " + Math.round(seg / 60) + " min";
     if (seg < 86400) return "hace " + Math.round(seg / 3600) + " h";
     return "hace " + Math.round(seg / 86400) + " d";
-  }
-  function duracion(seg) {
-    seg = Math.round(Number(seg) || 0);
-    var d = Math.floor(seg / 86400), h = Math.floor(seg % 86400 / 3600), m = Math.floor(seg % 3600 / 60);
-    return d ? d + " d " + h + " h" : h ? h + " h " + m + " min" : m + " min";
   }
   function fecha(ts) { try { return new Date(ts * 1000).toLocaleString("es-MX", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return String(ts); } }
 
@@ -138,6 +129,8 @@
     x.v.reg = !cuentas.length ? "Sin cuenta" : !conDato.length ? "Sin dato" : sinReg.length ? "No" : "Sí";
     p.problemas.sort(function (a, b) { return b.sev - a.sev || b.desde - a.desde; });
     x.peor = p.problemas.length ? p.problemas[0].sev : -1;
+    // Última lectura: ping o el uptime del agente SNMP (este solo sirve para saber que el agente responde;
+    // no es el tiempo encendido del teléfono, por eso el panel ya no lo muestra)
     var reloj = 0; ["icmpping[,3]", "gs.snmp.uptime"].forEach(function (k) { var i = p.it[k]; if (i && i.c > reloj) reloj = i.c; });
     x.reloj = reloj; x.edad = reloj ? ahora - reloj : null;
     x.v.lect = p.mant ? "En mantenimiento" : !reloj ? "Sin dato" : x.edad > VIEJA_S ? "Vieja" : "En vivo";
@@ -215,11 +208,10 @@
       return li;
     }), "Sin problemas activos.");
 
-    var rtt = valor(p, "icmppingsec[,10,,,,avg]"), loss = valor(p, "icmppingloss[,10]"), up = valor(p, "gs.snmp.uptime");
+    var rtt = valor(p, "icmppingsec[,10,,,,avg]"), loss = valor(p, "icmppingloss[,10]");
     pon(r["d-ping"], x.v.disp === "Sí" ? "Responde" : x.v.disp === "No" ? "No responde" : "Sin dato");
     pon(r["d-rtt"], rtt === null ? "" : (Number(rtt) * 1000).toFixed(1) + " ms");
     pon(r["d-loss"], loss === null ? "" : Number(loss).toFixed(0) + " %");
-    pon(r["d-uptime"], up === null ? "" : duracion(up));
     pon(r["d-lectura"], p.mant ? "En mantenimiento en Zabbix" : x.reloj ? fecha(x.reloj) + " (" + hace(x.edad) + ")" : "Sin lecturas");
     pon(r["d-modelo"], modelo(p));
     pon(r["d-firmware"], valor(p, "gs.inv.firmware"));

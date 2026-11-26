@@ -1,5 +1,11 @@
 # Cambios
 
+## 2.1.1
+- Se quita "Encendido" de la columna variable y del detalle. El dato venía de `gs.snmp.uptime`,
+  que es el tiempo desde que arrancó el agente SNMP, no el teléfono. En GRP2613 y GXV34xx ese
+  agente se reinicia solo, y un teléfono con días encendido aparecía con minutos. El ítem se
+  sigue usando solo para la hora de la última lectura.
+
 ## 2.1.0
 - Colores según el tema de cada usuario: Blue, Dark, High-contrast light y High-contrast dark.
   Se leen del atributo `theme` que Zabbix 7.0 pone en la etiqueta `<html>`, y los colores base
